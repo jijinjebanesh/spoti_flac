@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for background audio playback on iOS -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
+    
+    <!-- Audio Session category for background playback -->
+    <key>AVAudioSessionCategory</key>
+    <string>Playback</string>
+    
+    <!-- Notification permissions for iOS 13+ -->
+    <key>NSLocalNotificationUsageDescription</key>
+    <string>SpotiFLAC shows music playback notifications</string>
+    
+    <!-- Optional: Add to existing Info.plist -->
+    <!-- Other existing plist entries... -->
+    
+</dict>
+</plist>

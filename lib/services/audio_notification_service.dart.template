@@ -1,0 +1,248 @@
+// lib/services/audio_notification_service.dart
+// TEMPLATE - Copy this and customize
+
+import 'package:audio_service/audio_service.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:flutter/foundation.dart';
+
+/// Manages audio session and playback notifications
+/// Integrates just_audio with audio_service for media controls
+class AudioNotificationService {
+  static final AudioNotificationService _instance =
+      AudioNotificationService._internal();
+
+  factory AudioNotificationService() => _instance;
+  AudioNotificationService._internal();
+
+  bool _isInitialized = false;
+
+  /// Initialize audio service with custom handler
+  /// Call this once during app initialization
+  Future<void> initializeAudioService(AudioPlayer audioPlayer) async {
+    if (_isInitialized) return;
+
+    try {
+      await AudioService.init(
+        builder: () => AudioPlayerHandler(audioPlayer: audioPlayer),
+        config: const AudioServiceConfig(
+          // Android specific config
+          androidNotificationChannelId:
+              'com.example.spotiflac.channel.audio',
+          androidNotificationChannelName: 'Music Playback',
+          androidNotificationChannelDescription: 'Music playback controls',
+          androidNotificationIcon: '@mipmap/ic_launcher',
+          androidNotificationOngoing: true,
+          androidStopForegroundOnPause: false,
+          androidShowNotificationBadge: false,
+          
+          // iOS specific config
+          notificationColor: 0xFF1DB954, // Spotify green, customize as needed
+          
+          // Windows/Linux/macOS (if supported)
+          artDownscaleWidth: 512,
+          artDownscaleHeight: 512,
+          preloadArtwork: true,
+        ),
+      );
+      _isInitialized = true;
+    } catch (e) {
+      debugPrint('Failed to initialize audio service: $e');
+      rethrow;
+    }
+  }
+
+  /// Update media item displayed in notification
+  Future<void> updateMediaItem({
+    required String id,
+    required String title,
+    required String artist,
+    required String album,
+    String? artUri,
+    Duration? duration,
+  }) async {
+    if (!_isInitialized) {
+      debugPrint(
+        'AudioNotificationService not initialized. '
+        'Call initializeAudioService() first.',
+      );
+      return;
+    }
+
+    try {
+      await AudioService.currentMediaItem.add(
+        MediaItem(
+          id: id,
+          title: title,
+          artist: artist,
+          album: album,
+          artUri: artUri != null ? Uri.parse(artUri) : null,
+          duration: duration ?? Duration.zero,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to update media item: $e');
+    }
+  }
+
+  /// Update playback state and controls
+  Future<void> updatePlaybackState({
+    required bool isPlaying,
+    required Duration position,
+    required Duration bufferedPosition,
+    Duration? duration,
+    double speed = 1.0,
+    bool hasNext = false,
+    bool hasPrevious = false,
+  }) async {
+    if (!_isInitialized) return;
+
+    try {
+      final controls = <MediaControl>[
+        if (hasPrevious) MediaControl.skipToPrevious,
+        isPlaying ? MediaControl.pause : MediaControl.play,
+        if (hasNext) MediaControl.skipToNext,
+      ];
+
+      await AudioService.playbackState.add(
+        PlaybackState(
+          controls: controls,
+          systemActions: const {
+            MediaAction.seek,
+            MediaAction.seekForward,
+            MediaAction.seekBackward,
+          },
+          playing: isPlaying,
+          processingState: AudioProcessingState.ready,
+          updatePosition: position,
+          bufferedPosition: bufferedPosition,
+          speed: speed,
+          queueIndex: 0,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to update playback state: $e');
+    }
+  }
+
+  /// Clear notification
+  Future<void> clearNotification() async {
+    if (!_isInitialized) return;
+    try {
+      await AudioService.currentMediaItem.add(null);
+    } catch (e) {
+      debugPrint('Failed to clear notification: $e');
+    }
+  }
+}
+
+/// Handles user interactions with media controls
+/// Implements BaseAudioHandler from audio_service
+class AudioPlayerHandler extends BaseAudioHandler {
+  final AudioPlayer audioPlayer;
+
+  AudioPlayerHandler({required this.audioPlayer}) {
+    _setupAudioPlayerListeners();
+  }
+
+  /// Setup listeners on audio player to sync with audio service
+  void _setupAudioPlayerListeners() {
+    // Listen to playback state changes
+    audioPlayer.playingStream.listen((isPlaying) {
+      _updatePlaybackState();
+    });
+
+    // Listen to position changes
+    audioPlayer.positionStream.listen((_) {
+      _updatePlaybackState();
+    });
+
+    // Listen to player state (buffering, etc)
+    audioPlayer.playerStateStream.listen((_) {
+      _updatePlaybackState();
+    });
+  }
+
+  /// Internal: update playback state based on current audio player state
+  void _updatePlaybackState() {
+    try {
+      playbackState.add(
+        playbackState.value.copyWith(
+          controls: [
+            MediaControl.skipToPrevious,
+            audioPlayer.playing ? MediaControl.pause : MediaControl.play,
+            MediaControl.skipToNext,
+          ],
+          playing: audioPlayer.playing,
+          updatePosition: audioPlayer.position,
+          bufferedPosition: audioPlayer.bufferedPosition,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to update playback state: $e');
+    }
+  }
+
+  // ============ HANDLE MEDIA BUTTON TAPS ============
+
+  @override
+  Future<void> play() async {
+    try {
+      await audioPlayer.play();
+    } catch (e) {
+      debugPrint('Failed to play: $e');
+    }
+  }
+
+  @override
+  Future<void> pause() async {
+    try {
+      await audioPlayer.pause();
+    } catch (e) {
+      debugPrint('Failed to pause: $e');
+    }
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    try {
+      await audioPlayer.seek(position);
+    } catch (e) {
+      debugPrint('Failed to seek: $e');
+    }
+  }
+
+  @override
+  Future<void> skipToNext() async {
+    // TODO: Implement skip to next via playback provider
+    // This requires coordinating with the playback state provider
+    // to know what the next track is
+    try {
+      debugPrint('Skip to next - implement via playback provider');
+      // Example:
+      // await ref.read(playbackProvider.notifier).skipToNext();
+    } catch (e) {
+      debugPrint('Failed to skip to next: $e');
+    }
+  }
+
+  @override
+  Future<void> skipToPrevious() async {
+    // TODO: Implement skip to previous via playback provider
+    try {
+      debugPrint('Skip to previous - implement via playback provider');
+      // Example:
+      // await ref.read(playbackProvider.notifier).skipToPrevious();
+    } catch (e) {
+      debugPrint('Failed to skip to previous: $e');
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    try {
+      await audioPlayer.stop();
+    } catch (e) {
+      debugPrint('Failed to stop: $e');
+    }
+  }
+}

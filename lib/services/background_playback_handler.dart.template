@@ -1,0 +1,110 @@
+// lib/services/background_playback_handler.dart
+// TEMPLATE - Copy this and customize
+
+import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
+
+/// Configures audio session for background playback
+/// Ensures audio continues when app is minimized or locked
+class BackgroundPlaybackHandler {
+  static final BackgroundPlaybackHandler _instance =
+      BackgroundPlaybackHandler._internal();
+
+  factory BackgroundPlaybackHandler() => _instance;
+  BackgroundPlaybackHandler._internal();
+
+  bool _isConfigured = false;
+
+  /// Configure audio session for music playback
+  /// Must be called during app initialization
+  Future<void> setupAudioSession() async {
+    if (_isConfigured) return;
+
+    try {
+      final session = await AudioSession.instance;
+
+      await session.configure(
+        const AudioSessionConfiguration(
+          // Category: playback means audio will continue in background
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          
+          // Options: duckOthers means lower volume when calls/alarms come in
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.duckOthers,
+          
+          // Mode: default is standard playback
+          avAudioSessionMode: AVAudioSessionMode.default_,
+          
+          // Android audio attributes
+          androidAudioAttributes: AndroidAudioAttributes(
+            // Content type: music tells Android OS this is music
+            contentType: AndroidAudioContentType.music,
+            
+            // Flags: audibilityEnforced means respect ringer/vibrate settings
+            flags: AndroidAudioFlags.audibilityEnforced,
+            
+            // Usage: media is for general music playback
+            usage: AndroidAudioUsage.media,
+          ),
+          
+          // If audio gets ducked, auto-pause after 10 seconds
+          androidWillPauseWhenDucked: true,
+        ),
+      );
+
+      // Verify configuration worked
+      final session2 = await AudioSession.instance;
+      debugPrint('Audio session configured: ${session2.category}');
+
+      _isConfigured = true;
+    } catch (e) {
+      debugPrint('Failed to configure audio session: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if audio session is properly configured
+  Future<bool> isConfigured() async {
+    if (!_isConfigured) return false;
+    
+    try {
+      final session = await AudioSession.instance;
+      return session.category == AVAudioSessionCategory.playback;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Reset audio session (e.g., on app termination)
+  Future<void> resetAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      
+      // Restore default category (might stop background audio)
+      // Only call if you want to disable background playback
+      // await session.configure(
+      //   const AudioSessionConfiguration(
+      //     avAudioSessionCategory: AVAudioSessionCategory.ambient,
+      //   ),
+      // );
+      
+      debugPrint('Audio session reset');
+      _isConfigured = false;
+    } catch (e) {
+      debugPrint('Failed to reset audio session: $e');
+    }
+  }
+}
+
+/// NOTE: For wake lock (keeping CPU awake during playback):
+/// Add this to pubspec.yaml:
+///   wakelock_plus: ^1.2.3
+/// 
+/// Then use:
+///   import 'package:wakelock_plus/wakelock_plus.dart';
+///   
+///   // During playback start:
+///   WakelockPlus.enable();
+///   
+///   // During playback stop:
+///   WakelockPlus.disable();

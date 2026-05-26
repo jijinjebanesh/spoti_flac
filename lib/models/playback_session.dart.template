@@ -1,0 +1,74 @@
+// lib/models/playback_session.dart
+// TEMPLATE - Copy this exactly
+
+import 'package:json_annotation/json_annotation.dart';
+
+part 'playback_session.g.dart';
+
+/// Represents a saved playback session for resume functionality
+@JsonSerializable()
+class PlaybackSession {
+  /// Unique identifier for the track
+  final String trackId;
+
+  /// Track name / title
+  final String trackName;
+
+  /// Artist name
+  final String artistName;
+
+  /// Album name
+  final String albumName;
+
+  /// URL or path to cover art (optional)
+  final String? coverUrl;
+
+  /// Full file path to the audio file on device
+  final String filePath;
+
+  /// Current playback position
+  final Duration position;
+
+  /// When this session was created/last updated
+  final DateTime timestamp;
+
+  /// Whether the track was playing (vs paused)
+  final bool wasPlaying;
+
+  /// Optional: Service source (local, spotify, tidal, etc)
+  final String service;
+
+  /// Optional: Metadata for resuming in specific order
+  final String? queueId;
+
+  PlaybackSession({
+    required this.trackId,
+    required this.trackName,
+    required this.artistName,
+    required this.albumName,
+    this.coverUrl,
+    required this.filePath,
+    required this.position,
+    required this.timestamp,
+    this.wasPlaying = false,
+    this.service = 'local',
+    this.queueId,
+  });
+
+  /// Convert from JSON (deserialization)
+  factory PlaybackSession.fromJson(Map<String, dynamic> json) =>
+      _$PlaybackSessionFromJson(json);
+
+  /// Convert to JSON (serialization)
+  Map<String, dynamic> toJson() => _$PlaybackSessionToJson(this);
+
+  /// Check if session is stale (older than maxAgeDays)
+  bool isStale(int maxAgeDays) {
+    final age = DateTime.now().difference(timestamp).inDays;
+    return age > maxAgeDays;
+  }
+
+  @override
+  String toString() =>
+      'PlaybackSession(track=$trackName, artist=$artistName, pos=${position.inSeconds}s)';
+}
