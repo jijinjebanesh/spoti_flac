@@ -82,6 +82,10 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
   musixmatchLanguage: json['musixmatchLanguage'] as String? ?? '',
   lastSeenVersion: json['lastSeenVersion'] as String? ?? '',
   deduplicateDownloads: json['deduplicateDownloads'] as bool? ?? true,
+  pinnedFolders: (json['pinnedFolders'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
 );
 
 Map<String, dynamic> _$AppSettingsToJson(
@@ -147,4 +151,5 @@ Map<String, dynamic> _$AppSettingsToJson(
   'musixmatchLanguage': instance.musixmatchLanguage,
   'lastSeenVersion': instance.lastSeenVersion,
   'deduplicateDownloads': instance.deduplicateDownloads,
+  'pinnedFolders': instance.pinnedFolders,
 };

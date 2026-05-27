@@ -12,6 +12,7 @@ import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/utils/local_library_track_mapper.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/widgets/premium_lyrics_sheet.dart';
+import 'package:on_audio_query/on_audio_query.dart';
 
 class PremiumMusicTab extends ConsumerStatefulWidget {
   const PremiumMusicTab({super.key});
@@ -558,7 +559,22 @@ class NowPlayingScreen extends ConsumerWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (art != null && art.existsSync()) Image.file(art, fit: BoxFit.cover) else ColoredBox(color: scheme.surface),
+          if (item.coverPath != null && item.coverPath!.isNotEmpty)
+            if (item.coverPath!.startsWith('http://') || item.coverPath!.startsWith('https://'))
+              Image.network(item.coverPath!, fit: BoxFit.cover)
+            else if (item.coverPath!.startsWith('content://'))
+              QueryArtworkWidget(
+                id: int.tryParse(Uri.parse(item.coverPath!).pathSegments.last) ?? 0,
+                type: ArtworkType.ALBUM,
+                artworkFit: BoxFit.cover,
+                nullArtworkWidget: ColoredBox(color: scheme.surface),
+              )
+            else if (File(item.coverPath!).existsSync())
+              Image.file(File(item.coverPath!), fit: BoxFit.cover)
+            else
+              ColoredBox(color: scheme.surface)
+          else
+            ColoredBox(color: scheme.surface),
           BackdropFilter(filter: ImageFilter.blur(sigmaX: 38, sigmaY: 38), child: ColoredBox(color: scheme.surface.withValues(alpha: .72))),
           SafeArea(
             child: Padding(
@@ -771,22 +787,36 @@ class _PlaybackQueueSheetState extends ConsumerState<_PlaybackQueueSheet> {
   }
 }
 
-class _WaveformProgress extends ConsumerWidget {
+class _WaveformProgress extends ConsumerStatefulWidget {
   final Duration position;
   final Duration duration;
   final Duration buffered;
   const _WaveformProgress({required this.position, required this.duration, required this.buffered});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final max = duration.inMilliseconds <= 0 ? 1.0 : duration.inMilliseconds.toDouble();
+  ConsumerState<_WaveformProgress> createState() => _WaveformProgressState();
+}
+
+class _WaveformProgressState extends ConsumerState<_WaveformProgress> {
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final max = widget.duration.inMilliseconds <= 0 ? 1.0 : widget.duration.inMilliseconds.toDouble();
+    final value = _dragValue ?? widget.position.inMilliseconds.toDouble();
+    
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(trackHeight: 8, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7)),
       child: Slider(
-        value: position.inMilliseconds.clamp(0, max.toInt()).toDouble(),
+        value: value.clamp(0.0, max),
         max: max,
-        secondaryTrackValue: buffered.inMilliseconds.clamp(0, max.toInt()).toDouble(),
-        onChanged: (v) => ref.read(premiumPlaybackProvider.notifier).seek(Duration(milliseconds: v.round())),
+        secondaryTrackValue: widget.buffered.inMilliseconds.clamp(0, max.toInt()).toDouble(),
+        onChangeStart: (v) => setState(() => _dragValue = v),
+        onChanged: (v) => setState(() => _dragValue = v),
+        onChangeEnd: (v) {
+          ref.read(premiumPlaybackProvider.notifier).seek(Duration(milliseconds: v.round()));
+          setState(() => _dragValue = null);
+        },
       ),
     );
   }
@@ -827,16 +857,43 @@ class _CoverArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final path = item.coverPath;
+    final path = item.coverPath?.trim();
     final scheme = Theme.of(context).colorScheme;
+    Widget image;
+    if (path != null && path.isNotEmpty) {
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        image = Image.network(
+          path,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(scheme),
+        );
+      } else if (path.startsWith('content://')) {
+        final uri = Uri.parse(path);
+        final idStr = uri.pathSegments.last;
+        final id = int.tryParse(idStr) ?? 0;
+        image = QueryArtworkWidget(
+          id: id,
+          type: ArtworkType.ALBUM,
+          artworkFit: BoxFit.cover,
+          artworkWidth: size,
+          artworkHeight: size,
+          nullArtworkWidget: _fallback(scheme),
+        );
+      } else if (File(path).existsSync()) {
+        image = Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(scheme));
+      } else {
+        image = _fallback(scheme);
+      }
+    } else {
+      image = _fallback(scheme);
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(size > 100 ? 32 : 14),
       child: SizedBox(
         width: size,
         height: size,
-        child: path != null && path.isNotEmpty && File(path).existsSync()
-            ? Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(scheme))
-            : _fallback(scheme),
+        child: image,
       ),
     );
   }

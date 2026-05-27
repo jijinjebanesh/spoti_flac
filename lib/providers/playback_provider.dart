@@ -7,6 +7,11 @@ import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/utils/library_playback_mapper.dart';
 import 'package:spotiflac_android/utils/logger.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:spotiflac_android/services/platform_bridge.dart';
+import 'package:spotiflac_android/services/download_request_payload.dart';
+import 'package:spotiflac_android/providers/settings_provider.dart';
+import 'package:spotiflac_android/providers/extension_provider.dart';
 
 final _log = AppLogger('PlaybackProvider');
 
@@ -51,9 +56,12 @@ class PlaybackController extends Notifier<PlaybackState> {
   Future<void> playTrackList(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
 
-    final orderedTracks = _orderedTracksFromStartIndex(tracks, startIndex);
     var skippedCueVirtualTrack = false;
-    for (final track in orderedTracks) {
+    final playableItems = <LocalLibraryItem>[];
+    int playableStartIndex = 0;
+
+    for (var i = 0; i < tracks.length; i++) {
+      final track = tracks[i];
       final resolvedPath = await _resolveTrackPath(track);
       if (resolvedPath == null) {
         continue;
@@ -63,18 +71,31 @@ class PlaybackController extends Notifier<PlaybackState> {
         continue;
       }
 
-      _log.d(
-        'Playing first available track in-app: '
-        '"${track.name}" by ${track.artistName} -> $resolvedPath',
+      final item = LibraryPlaybackMapper.fromDownloadHistory(
+        DownloadHistoryItem(
+          id: resolvedPath,
+          trackName: track.name,
+          artistName: track.artistName,
+          albumName: track.albumName,
+          coverUrl: track.coverUrl ?? '',
+          filePath: resolvedPath,
+          service: 'local',
+          downloadedAt: DateTime.now(),
+        ),
       );
-      await playLocalPath(
-        path: resolvedPath,
-        title: track.name,
-        artist: track.artistName,
-        album: track.albumName,
-        coverUrl: track.coverUrl ?? '',
-        track: track,
-      );
+
+      playableItems.add(item);
+      if (i == startIndex) {
+        playableStartIndex = playableItems.length - 1;
+      }
+    }
+
+    if (playableItems.isNotEmpty) {
+      _log.d('Playing track list with ${playableItems.length} items starting at $playableStartIndex');
+      await ref.read(premiumPlaybackProvider.notifier).playLibrary(
+            playableItems,
+            startIndex: playableStartIndex,
+          );
       return;
     }
 
@@ -87,16 +108,80 @@ class PlaybackController extends Notifier<PlaybackState> {
     );
   }
 
-  List<Track> _orderedTracksFromStartIndex(List<Track> tracks, int startIndex) {
-    final safeStart = startIndex.clamp(0, tracks.length - 1);
-    if (safeStart == 0) {
-      return List<Track>.from(tracks, growable: false);
+  Future<void> addTrackToQueue(Track track) async {
+    final resolvedPath = await _resolveTrackPath(track);
+    if (resolvedPath != null) {
+      final item = LibraryPlaybackMapper.fromDownloadHistory(
+        DownloadHistoryItem(
+          id: resolvedPath,
+          trackName: track.name,
+          artistName: track.artistName,
+          albumName: track.albumName,
+          coverUrl: track.coverUrl ?? '',
+          filePath: resolvedPath,
+          service: 'local',
+          downloadedAt: DateTime.now(),
+        ),
+      );
+      ref.read(premiumPlaybackProvider.notifier).addToQueue(item);
+    } else {
+      throw Exception('Track must be downloaded before adding to queue.');
+    }
+  }
+
+  Future<void> playStream(Track track) async {
+    final settings = ref.read(settingsProvider);
+    final extensionState = ref.read(extensionProvider);
+    final requested = track.source?.isNotEmpty == true ? track.source! : settings.defaultService;
+    final service = resolveEffectiveDownloadService(
+      requested,
+      extensionState,
+    );
+
+    if (service.isEmpty) {
+      throw Exception('No extension available to stream this track');
     }
 
-    return <Track>[
-      ...tracks.sublist(safeStart),
-      ...tracks.sublist(0, safeStart),
-    ];
+    final tempDir = await getTemporaryDirectory();
+
+    final payload = DownloadRequestPayload(
+      trackName: track.name,
+      artistName: track.artistName,
+      albumName: track.albumName,
+      albumArtist: track.albumArtist ?? '',
+      coverUrl: track.coverUrl ?? '',
+      outputDir: tempDir.path,
+      filenameFormat: 'stream_${track.id}',
+      service: service,
+      source: track.source ?? '',
+      isrc: track.isrc ?? '',
+      spotifyId: track.id,
+      durationMs: (track.duration) * 1000,
+      useExtensions: true,
+      useFallback: false,
+    );
+
+    final response = await PlatformBridge.downloadByStrategy(payload: payload);
+
+    if (response['success'] == true) {
+      final filePath = response['file_path'] as String;
+      final item = LibraryPlaybackMapper.fromDownloadHistory(
+        DownloadHistoryItem(
+          id: 'stream_${track.id}',
+          trackName: track.name,
+          artistName: track.artistName,
+          albumName: track.albumName,
+          coverUrl: track.coverUrl ?? '',
+          filePath: filePath,
+          service: service,
+          downloadedAt: DateTime.now(),
+          duration: track.duration,
+        ),
+      );
+      ref.read(premiumPlaybackProvider.notifier).playLibrary([item]);
+    } else {
+      throw Exception('Failed to stream track: ${response['error']}');
+    }
   }
 
   Future<String?> _resolveTrackPath(Track track) async {

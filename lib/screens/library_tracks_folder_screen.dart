@@ -17,6 +17,8 @@ import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
+import 'package:spotiflac_android/providers/premium_playback_provider.dart';
+import 'package:spotiflac_android/widgets/library_mini_player.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
 
 class LibraryTracksFolderScreen extends ConsumerStatefulWidget {
@@ -41,6 +43,7 @@ class _LibraryTracksFolderScreenState
 
   bool _isSelectionMode = false;
   final Set<String> _selectedKeys = {};
+  bool _isGridMode = false;
   UserPlaylistCollection? playlist;
 
   @override
@@ -242,6 +245,219 @@ class _LibraryTracksFolderScreenState
     showAddTracksToPlaylistSheet(context, ref, selectedTracks);
   }
 
+  Widget _buildGridTrackTile({
+    required CollectionTrackEntry entry,
+    required Track track,
+    required bool isSelected,
+    required List<Track> folderTracks,
+    required int index,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final rawCoverUrl = track.coverUrl?.trim();
+    final localCoverUrl = rawCoverUrl == null
+        ? ref
+              .watch(
+                localLibraryCoverProvider(
+                  LocalLibraryCoverRequest(
+                    isrc: track.isrc?.trim(),
+                    trackName: track.name,
+                    artistName: track.artistName,
+                  ),
+                ),
+              )
+              .maybeWhen(data: (cover) => cover, orElse: () => null)
+        : null;
+    final effectiveCoverUrl = rawCoverUrl ?? localCoverUrl;
+
+    final trackIndex = folderTracks.indexWhere(
+      (t) =>
+          t.id == track.id &&
+          t.name == track.name &&
+          t.artistName == track.artistName,
+    );
+
+    return GestureDetector(
+      onTap: isSelected
+          ? () => _toggleSelection(entry.key)
+          : () {
+              if (trackIndex == -1) {
+                if (widget.mode == LibraryTracksFolderMode.wishlist) {
+                  // For wishlist, navigate to download or play
+                  ref
+                      .read(playbackProvider.notifier)
+                      .playTrackList(folderTracks, startIndex: 0);
+                }
+                return;
+              }
+
+              ref
+                  .read(playbackProvider.notifier)
+                  .playTrackList(folderTracks, startIndex: trackIndex)
+                  .catchError((e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('$e')));
+                  });
+            },
+      onLongPress: () => _enterSelectionMode(entry.key),
+      child: Card(
+        elevation: 0,
+        margin: const EdgeInsets.all(0),
+        color: isSelected
+            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: isSelected
+              ? BorderSide(color: colorScheme.primary, width: 2)
+              : BorderSide.none,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: effectiveCoverUrl != null && effectiveCoverUrl.isNotEmpty
+                  ? _buildTrackCoverImage(effectiveCoverUrl)
+                  : Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(
+                        Icons.music_note,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+            ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            if (isSelected)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check,
+                    size: 14,
+                    color: colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    track.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    track.artistName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.9),
+                  shape: BoxShape.circle,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      if (trackIndex == -1) return;
+                      ref
+                          .read(playbackProvider.notifier)
+                          .playTrackList(folderTracks, startIndex: trackIndex);
+                    },
+                    customBorder: const CircleBorder(),
+                    child: Icon(
+                      Icons.play_arrow,
+                      size: 18,
+                      color: colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackCoverImage(String coverUrl) {
+    final isLocal =
+        !coverUrl.startsWith('http://') && !coverUrl.startsWith('https://');
+    final colorScheme = Theme.of(context).colorScheme;
+
+    Widget placeholder() => Container(
+      color: colorScheme.surfaceContainerHighest,
+      child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
+    );
+
+    if (isLocal) {
+      return Image.file(
+        File(coverUrl),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => placeholder(),
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: coverUrl,
+      fit: BoxFit.cover,
+      memCacheWidth: 256,
+      cacheManager: CoverCacheManager.instance,
+      placeholder: (_, _) => placeholder(),
+      errorWidget: (_, __, ___) => placeholder(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -323,6 +539,9 @@ class _LibraryTracksFolderScreenState
 
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
+    final hasMiniPlayer = ref.watch(premiumPlaybackProvider.select((s) => s.current != null));
+    final miniPlayerInset = hasMiniPlayer ? 88.0 : 0.0;
+
     return PopScope(
       canPop: !_isSelectionMode,
       onPopInvokedWithResult: (didPop, result) {
@@ -344,6 +563,28 @@ class _LibraryTracksFolderScreenState
                       title: emptyTitle,
                       subtitle: emptySubtitle,
                     ),
+                  )
+                else if (_isGridMode)
+                  SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 126,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1,
+                        ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final entry = entries[index];
+                      final track = entry.track;
+                      final isSelected = _selectedKeys.contains(entry.key);
+                      return _buildGridTrackTile(
+                        entry: entry,
+                        track: track,
+                        isSelected: isSelected,
+                        folderTracks: folderTracks,
+                        index: index,
+                      );
+                    }, childCount: entries.length),
                   )
                 else
                   SliverList(
@@ -377,7 +618,7 @@ class _LibraryTracksFolderScreenState
                     }, childCount: entries.length),
                   ),
                 SliverToBoxAdapter(
-                  child: SizedBox(height: _isSelectionMode ? 200 : 32),
+                  child: SizedBox(height: _isSelectionMode ? 200 : (32 + miniPlayerInset)),
                 ),
               ],
             ),
@@ -395,6 +636,14 @@ class _LibraryTracksFolderScreenState
                 bottomPadding,
               ),
             ),
+
+            if (hasMiniPlayer && !_isSelectionMode)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12 + bottomPadding,
+                child: const LibraryMiniPlayer(),
+              ),
           ],
         ),
       ),
@@ -639,6 +888,14 @@ class _LibraryTracksFolderScreenState
         ),
       ),
       actions: [
+        if (!_isSelectionMode)
+          IconButton(
+            icon: Icon(_isGridMode ? Icons.list : Icons.grid_view, size: 24),
+            onPressed: () {
+              setState(() => _isGridMode = !_isGridMode);
+            },
+            tooltip: _isGridMode ? 'List view' : 'Grid view',
+          ),
         if (isPlaylistMode && !_isSelectionMode)
           IconButton(
             icon: Container(
@@ -803,7 +1060,7 @@ class _LibraryTracksFolderScreenState
                               const SizedBox(width: 12),
                               _buildDownloadAllCenterButton(entries),
                               const SizedBox(width: 12),
-                              _buildHeaderActionPlaceholder(),
+                              _buildPlayAllButton(entries),
                             ],
                           ),
                         ],
@@ -848,6 +1105,27 @@ class _LibraryTracksFolderScreenState
       onPressed: tracks.isEmpty ? null : () => _confirmDownloadAll(tracks),
       icon: const Icon(Icons.download_rounded, size: 18),
       label: Text(context.l10n.downloadAllCount(tracks.length)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        minimumSize: const Size(0, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+  }
+
+  Widget _buildPlayAllButton(List<CollectionTrackEntry> entries) {
+    final tracks = entries.map((e) => e.track).toList(growable: false);
+    return FilledButton.icon(
+      onPressed: tracks.isEmpty
+          ? null
+          : () {
+              ref
+                  .read(playbackProvider.notifier)
+                  .playTrackList(tracks, startIndex: 0);
+            },
+      icon: const Icon(Icons.play_arrow_rounded, size: 18),
+      label: Text(context.l10n.tooltipPlay),
       style: FilledButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -1282,12 +1560,46 @@ class _CollectionTrackTile extends ConsumerWidget {
           onTap: isSelectionMode
               ? onTap
               : () {
-                  if (mode == LibraryTracksFolderMode.wishlist) {
-                    _downloadTrack(context, ref);
+                  // Find the index of this track in the folder tracks
+                  final trackIndex = folderTracks.indexWhere(
+                    (t) =>
+                        t.id == track.id &&
+                        t.name == track.name &&
+                        t.artistName == track.artistName,
+                  );
+
+                  if (trackIndex == -1) {
+                    // Fallback if exact match not found
+                    if (mode == LibraryTracksFolderMode.wishlist) {
+                      _downloadTrack(context, ref);
+                    }
                     return;
                   }
 
-                  _navigateToMetadata(context, ref);
+                  // Play the entire folder with this track as the starting point
+                  if (mode == LibraryTracksFolderMode.wishlist) {
+                    // For wishlist, play the track using the full list
+                    ref
+                        .read(playbackProvider.notifier)
+                        .playTrackList(folderTracks, startIndex: trackIndex)
+                        .catchError((e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$e')));
+                        });
+                  } else {
+                    // For loved and playlists, play using full list
+                    ref
+                        .read(playbackProvider.notifier)
+                        .playTrackList(folderTracks, startIndex: trackIndex)
+                        .catchError((e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text('$e')));
+                        });
+                  }
                 },
           onLongPress: isSelectionMode ? onTap : onLongPress,
         ),

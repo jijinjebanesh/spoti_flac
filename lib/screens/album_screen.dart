@@ -5,11 +5,11 @@ import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/l10n/l10n.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/recent_access_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
-import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/services/platform_bridge.dart';
 import 'package:spotiflac_android/utils/file_access.dart';
 import 'package:spotiflac_android/utils/image_cache_utils.dart';
@@ -642,6 +642,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
             index: index,
             child: _AlbumTrackItem(
               track: track,
+              allTracks: tracks,
+              trackIndex: index,
               isInHistory: isInHistory,
               onDownload: () => _downloadTrack(context, track),
             ),
@@ -950,14 +952,32 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
 
 class _AlbumTrackItem extends ConsumerWidget {
   final Track track;
+  final List<Track> allTracks;
+  final int trackIndex;
   final bool isInHistory;
   final VoidCallback onDownload;
 
   const _AlbumTrackItem({
     required this.track,
+    required this.allTracks,
+    required this.trackIndex,
     required this.isInHistory,
     required this.onDownload,
   });
+
+  void _playStream(BuildContext context, WidgetRef ref) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Loading stream for ${track.name}...')),
+    );
+    try {
+      await ref.read(playbackProvider.notifier).playStream(track);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1069,7 +1089,18 @@ class _AlbumTrackItem extends ConsumerWidget {
               ],
             ],
           ),
-          trailing: TrackCollectionQuickActions(track: track),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isInLocalLibrary)
+                IconButton(
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  tooltip: 'Play Preview',
+                  onPressed: () => _playStream(context, ref),
+                ),
+              TrackCollectionQuickActions(track: track),
+            ],
+          ),
           onTap: () => _handleTap(context, ref, isQueued: isQueued),
           onLongPress: () => TrackCollectionQuickActions.showTrackOptionsSheet(
             context,
@@ -1119,13 +1150,7 @@ class _AlbumTrackItem extends ConsumerWidget {
         if (exists) {
           await ref
               .read(playbackProvider.notifier)
-              .playLocalPath(
-                path: historyItem.filePath,
-                title: track.name,
-                artist: track.artistName,
-                album: track.albumName,
-                coverUrl: track.coverUrl ?? '',
-              );
+              .playTrackList(allTracks, startIndex: trackIndex);
           return true;
         }
         historyNotifier.removeFromHistory(historyItem.id);
@@ -1142,13 +1167,7 @@ class _AlbumTrackItem extends ConsumerWidget {
       if (localItem != null && await fileExists(localItem.filePath)) {
         await ref
             .read(playbackProvider.notifier)
-            .playLocalPath(
-              path: localItem.filePath,
-              title: localItem.trackName,
-              artist: localItem.artistName,
-              album: localItem.albumName,
-              coverUrl: localItem.coverPath ?? track.coverUrl ?? '',
-            );
+            .playTrackList(allTracks, startIndex: trackIndex);
         return true;
       }
     } catch (e) {

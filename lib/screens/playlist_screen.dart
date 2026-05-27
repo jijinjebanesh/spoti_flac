@@ -394,6 +394,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                               const SizedBox(width: 12),
                               _buildDownloadAllCenterButton(context),
                               const SizedBox(width: 12),
+                              _buildPlayAllButton(context),
+                              const SizedBox(width: 12),
                               _buildAddToPlaylistButton(context),
                             ],
                           ),
@@ -499,6 +501,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
             index: index,
             child: _PlaylistTrackItem(
               track: track,
+              allTracks: _tracks,
+              trackIndex: index,
               isInHistory: isInHistory,
               onDownload: () => _downloadTrack(context, track),
             ),
@@ -616,6 +620,20 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
       onPressed: _tracks.isEmpty ? null : () => _confirmDownloadAll(context),
       icon: const Icon(Icons.download_rounded, size: 18),
       label: Text(context.l10n.downloadAllCount(_tracks.length)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        minimumSize: const Size(0, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+  }
+
+  Widget _buildPlayAllButton(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: _tracks.isEmpty ? null : () => ref.read(playbackProvider.notifier).playTrackList(_tracks, startIndex: 0),
+      icon: const Icon(Icons.play_arrow_rounded, size: 18),
+      label: Text(context.l10n.tooltipPlay),
       style: FilledButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -802,14 +820,32 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
 
 class _PlaylistTrackItem extends ConsumerWidget {
   final Track track;
+  final List<Track> allTracks;
+  final int trackIndex;
   final bool isInHistory;
   final VoidCallback onDownload;
 
   const _PlaylistTrackItem({
     required this.track,
+    required this.allTracks,
+    required this.trackIndex,
     required this.isInHistory,
     required this.onDownload,
   });
+
+  void _playStream(BuildContext context, WidgetRef ref) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Loading stream for ${track.name}...')),
+    );
+    try {
+      await ref.read(playbackProvider.notifier).playStream(track);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -926,7 +962,18 @@ class _PlaylistTrackItem extends ConsumerWidget {
               ],
             ],
           ),
-          trailing: TrackCollectionQuickActions(track: track),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isInLocalLibrary)
+                IconButton(
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  tooltip: 'Play Preview',
+                  onPressed: () => _playStream(context, ref),
+                ),
+              TrackCollectionQuickActions(track: track),
+            ],
+          ),
           onTap: () => _handleTap(context, ref, isQueued: isQueued),
           onLongPress: () => TrackCollectionQuickActions.showTrackOptionsSheet(
             context,
@@ -976,13 +1023,7 @@ class _PlaylistTrackItem extends ConsumerWidget {
         if (exists) {
           await ref
               .read(playbackProvider.notifier)
-              .playLocalPath(
-                path: historyItem.filePath,
-                title: track.name,
-                artist: track.artistName,
-                album: track.albumName,
-                coverUrl: track.coverUrl ?? '',
-              );
+              .playTrackList(allTracks, startIndex: trackIndex);
           return true;
         }
         historyNotifier.removeFromHistory(historyItem.id);
@@ -999,13 +1040,7 @@ class _PlaylistTrackItem extends ConsumerWidget {
       if (localItem != null && await fileExists(localItem.filePath)) {
         await ref
             .read(playbackProvider.notifier)
-            .playLocalPath(
-              path: localItem.filePath,
-              title: localItem.trackName,
-              artist: localItem.artistName,
-              album: localItem.albumName,
-              coverUrl: localItem.coverPath ?? track.coverUrl ?? '',
-            );
+            .playTrackList(allTracks, startIndex: trackIndex);
         return true;
       }
     } catch (e) {

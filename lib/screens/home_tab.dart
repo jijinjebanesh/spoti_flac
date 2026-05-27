@@ -11,9 +11,11 @@ import 'package:spotiflac_android/providers/track_provider.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/recent_access_provider.dart';
 import 'package:spotiflac_android/providers/explore_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
+import 'package:spotiflac_android/providers/premium_playback_provider.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/screens/album_screen.dart';
 import 'package:spotiflac_android/screens/artist_screen.dart';
@@ -28,6 +30,7 @@ import 'package:spotiflac_android/screens/downloaded_album_screen.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
+import 'package:spotiflac_android/widgets/library_mini_player.dart';
 import 'package:spotiflac_android/utils/clickable_metadata.dart';
 import 'package:spotiflac_android/widgets/audio_quality_badges.dart';
 import 'package:spotiflac_android/widgets/cached_cover_image.dart';
@@ -1225,6 +1228,12 @@ class _HomeTabState extends ConsumerState<HomeTab>
       });
     }
 
+    final hasMiniPlayer = ref.watch(
+      premiumPlaybackProvider.select((s) => s.current != null),
+    );
+    final miniPlayerBottomInset =
+        (hasMiniPlayer ? 88.0 : 0.0) + MediaQuery.paddingOf(context).bottom;
+
     return GestureDetector(
       onTap: () {
         if (_searchFocusNode.hasFocus) {
@@ -1232,262 +1241,291 @@ class _HomeTabState extends ConsumerState<HomeTab>
         }
       },
       behavior: HitTestBehavior.translucent,
-      child: Scaffold(
-        body: RefreshIndicator(
-          onRefresh: () => ref.read(exploreProvider.notifier).refresh(),
-          notificationPredicate: (notification) => showExplore,
-          child: CustomScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 120 + topPadding,
-                collapsedHeight: kToolbarHeight,
-                floating: false,
-                pinned: true,
-                backgroundColor: colorScheme.surface,
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading: false,
-                flexibleSpace: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final maxHeight = 120 + topPadding;
-                    final minHeight = kToolbarHeight + topPadding;
-                    final expandRatio =
-                        ((constraints.maxHeight - minHeight) /
-                                (maxHeight - minHeight))
-                            .clamp(0.0, 1.0);
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Scaffold(
+            body: RefreshIndicator(
+              onRefresh: () => ref.read(exploreProvider.notifier).refresh(),
+              notificationPredicate: (notification) => showExplore,
+              child: CustomScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                slivers: [
+                  SliverAppBar(
+                    expandedHeight: 120 + topPadding,
+                    collapsedHeight: kToolbarHeight,
+                    floating: false,
+                    pinned: true,
+                    backgroundColor: colorScheme.surface,
+                    surfaceTintColor: Colors.transparent,
+                    automaticallyImplyLeading: false,
+                    flexibleSpace: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxHeight = 120 + topPadding;
+                        final minHeight = kToolbarHeight + topPadding;
+                        final expandRatio =
+                            ((constraints.maxHeight - minHeight) /
+                                    (maxHeight - minHeight))
+                                .clamp(0.0, 1.0);
 
-                    return FlexibleSpaceBar(
-                      expandedTitleScale: 1.0,
-                      titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
-                      title: Text(
-                        context.l10n.homeTitle,
-                        style: TextStyle(
-                          fontSize: 20 + (14 * expandRatio),
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              SliverToBoxAdapter(
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                  child: (hasResults || showExplore)
-                      ? const SizedBox.shrink()
-                      : _buildHomeIntro(
-                          colorScheme: colorScheme,
-                          screenHeight: screenHeight,
-                          showEmptyHomeState: showEmptyHomeState,
-                        ),
-                ),
-              ),
-
-              if (showSearchBar)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      (hasResults || showExplore) ? 8 : 32,
-                      16,
-                      (hasResults || showExplore) ? 8 : 16,
+                        return FlexibleSpaceBar(
+                          expandedTitleScale: 1.0,
+                          titlePadding: const EdgeInsets.only(
+                            left: 24,
+                            bottom: 16,
+                          ),
+                          title: Text(
+                            context.l10n.homeTitle,
+                            style: TextStyle(
+                              fontSize: 20 + (14 * expandRatio),
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    child: _buildSearchBar(colorScheme),
                   ),
-                ),
 
-              if (hasActualResults && !showRecentAccess)
-                Consumer(
-                  builder: (context, ref, _) {
-                    final currentSearchProvider = ref.watch(
-                      settingsProvider.select((s) => s.searchProvider),
-                    );
-                    final extensions = ref.watch(
-                      extensionProvider.select((s) => s.extensions),
-                    );
-                    final selectedSearchFilter = ref.watch(
-                      trackProvider.select((s) => s.selectedSearchFilter),
-                    );
-                    final searchFilters = _resolveSearchFilters(
-                      context,
-                      currentSearchProvider,
-                      extensions,
-                    );
-                    if (searchFilters.isEmpty) {
-                      return const SliverToBoxAdapter(child: SizedBox.shrink());
-                    }
-                    return SliverToBoxAdapter(
-                      child: _buildSearchFilterBar(
-                        searchFilters,
-                        _displaySearchFilterSelection(
-                          selectedSearchFilter,
-                          defaultSearchTab,
+                  SliverToBoxAdapter(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                      child: (hasResults || showExplore)
+                          ? const SizedBox.shrink()
+                          : _buildHomeIntro(
+                              colorScheme: colorScheme,
+                              screenHeight: screenHeight,
+                              showEmptyHomeState: showEmptyHomeState,
+                            ),
+                    ),
+                  ),
+
+                  if (showSearchBar)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          (hasResults || showExplore) ? 8 : 32,
+                          16,
+                          (hasResults || showExplore) ? 8 : 16,
+                        ),
+                        child: _buildSearchBar(colorScheme),
+                      ),
+                    ),
+
+                  if (hasActualResults && !showRecentAccess)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final currentSearchProvider = ref.watch(
+                          settingsProvider.select((s) => s.searchProvider),
+                        );
+                        final extensions = ref.watch(
+                          extensionProvider.select((s) => s.extensions),
+                        );
+                        final selectedSearchFilter = ref.watch(
+                          trackProvider.select((s) => s.selectedSearchFilter),
+                        );
+                        final searchFilters = _resolveSearchFilters(
+                          context,
                           currentSearchProvider,
                           extensions,
-                        ),
-                        colorScheme,
-                      ),
-                    );
-                  },
-                ),
+                        );
+                        if (searchFilters.isEmpty) {
+                          return const SliverToBoxAdapter(
+                            child: SizedBox.shrink(),
+                          );
+                        }
+                        return SliverToBoxAdapter(
+                          child: _buildSearchFilterBar(
+                            searchFilters,
+                            _displaySearchFilterSelection(
+                              selectedSearchFilter,
+                              defaultSearchTab,
+                              currentSearchProvider,
+                              extensions,
+                            ),
+                            colorScheme,
+                          ),
+                        );
+                      },
+                    ),
 
-              if (showRecentAccess)
-                Consumer(
-                  builder: (context, ref, _) {
-                    final recentAccessView = ref.watch(
-                      recentAccessViewProvider,
-                    );
-                    return SliverToBoxAdapter(
-                      child: _buildRecentAccess(recentAccessView, colorScheme),
-                    );
-                  },
-                ),
+                  if (showRecentAccess)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final recentAccessView = ref.watch(
+                          recentAccessViewProvider,
+                        );
+                        return SliverToBoxAdapter(
+                          child: _buildRecentAccess(
+                            recentAccessView,
+                            colorScheme,
+                          ),
+                        );
+                      },
+                    ),
 
-              SliverToBoxAdapter(
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                  child:
-                      (hasResults ||
-                          showRecentAccess ||
-                          showExplore ||
-                          showEmptyHomeState)
-                      ? const SizedBox.shrink()
-                      : Column(
-                          children: [
-                            if (!hasSearchedBefore)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  context.l10n.homeSupports,
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ),
-                            if (hasHistoryItems)
-                              Consumer(
-                                builder: (context, ref, _) {
-                                  final historyItems = ref.watch(
-                                    _homeHistoryPreviewProvider,
-                                  );
-                                  return Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      24,
-                                      32,
-                                      24,
-                                      24,
+                  SliverToBoxAdapter(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                      child:
+                          (hasResults ||
+                              showRecentAccess ||
+                              showExplore ||
+                              showEmptyHomeState)
+                          ? const SizedBox.shrink()
+                          : Column(
+                              children: [
+                                if (!hasSearchedBefore)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      context.l10n.homeSupports,
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
                                     ),
-                                    child: _buildRecentDownloads(
-                                      historyItems,
-                                      colorScheme,
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-
-              if (showExplore)
-                Consumer(
-                  builder: (context, ref, _) {
-                    final exploreSections = ref.watch(
-                      exploreProvider.select((s) => s.sections),
-                    );
-                    final exploreGreeting = ref.watch(
-                      exploreProvider.select((s) => s.greeting),
-                    );
-                    return SliverMainAxisGroup(
-                      slivers: _buildExploreSections(
-                        exploreSections,
-                        exploreGreeting,
-                        colorScheme,
-                      ),
-                    );
-                  },
-                ),
-
-              if (hasHomeFeedExtension &&
-                  !homeFeedDisabled &&
-                  !hasActualResults &&
-                  !isLoading &&
-                  exploreLoading)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: TrackListSkeleton(itemCount: 5),
+                                  ),
+                                if (hasHistoryItems)
+                                  Consumer(
+                                    builder: (context, ref, _) {
+                                      final historyItems = ref.watch(
+                                        _homeHistoryPreviewProvider,
+                                      );
+                                      return Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          24,
+                                          32,
+                                          24,
+                                          24,
+                                        ),
+                                        child: _buildRecentDownloads(
+                                          historyItems,
+                                          colorScheme,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                    ),
                   ),
-                ),
 
-              Consumer(
-                builder: (context, ref, _) {
-                  final tracks = ref.watch(
-                    trackProvider.select((s) => s.tracks),
-                  );
-                  final searchArtists = ref.watch(
-                    trackProvider.select((s) => s.searchArtists),
-                  );
-                  final searchAlbums = ref.watch(
-                    trackProvider.select((s) => s.searchAlbums),
-                  );
-                  final searchPlaylists = ref.watch(
-                    trackProvider.select((s) => s.searchPlaylists),
-                  );
-                  final isLoading = ref.watch(
-                    trackProvider.select((s) => s.isLoading),
-                  );
-                  final error = ref.watch(trackProvider.select((s) => s.error));
-                  final searchExtensionId = ref.watch(
-                    trackProvider.select((s) => s.searchExtensionId),
-                  );
-                  final localLibrarySettings = ref.watch(
-                    settingsProvider.select(
-                      (s) =>
-                          (s.localLibraryEnabled, s.localLibraryShowDuplicates),
+                  if (showExplore)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final exploreSections = ref.watch(
+                          exploreProvider.select((s) => s.sections),
+                        );
+                        final exploreGreeting = ref.watch(
+                          exploreProvider.select((s) => s.greeting),
+                        );
+                        return SliverMainAxisGroup(
+                          slivers: _buildExploreSections(
+                            exploreSections,
+                            exploreGreeting,
+                            colorScheme,
+                          ),
+                        );
+                      },
                     ),
-                  );
-                  final extensions = ref.watch(
-                    extensionProvider.select((s) => s.extensions),
-                  );
-                  final showLocalLibraryIndicator =
-                      localLibrarySettings.$1 && localLibrarySettings.$2;
-                  final thumbnailSizesByExtensionId =
-                      _getThumbnailSizesByExtensionId(extensions);
-                  final hasResults =
-                      tracks.isNotEmpty ||
-                      (searchArtists != null && searchArtists.isNotEmpty) ||
-                      (searchAlbums != null && searchAlbums.isNotEmpty) ||
-                      (searchPlaylists != null && searchPlaylists.isNotEmpty) ||
-                      isLoading ||
-                      error != null;
 
-                  return SliverMainAxisGroup(
-                    slivers: _buildSearchResults(
-                      tracks: tracks,
-                      searchArtists: searchArtists,
-                      searchAlbums: searchAlbums,
-                      searchPlaylists: searchPlaylists,
-                      isLoading: isLoading,
-                      error: error,
-                      colorScheme: colorScheme,
-                      hasResults: hasResults,
-                      searchExtensionId: searchExtensionId,
-                      showLocalLibraryIndicator: showLocalLibraryIndicator,
-                      thumbnailSizesByExtensionId: thumbnailSizesByExtensionId,
+                  if (hasHomeFeedExtension &&
+                      !homeFeedDisabled &&
+                      !hasActualResults &&
+                      !isLoading &&
+                      exploreLoading)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: TrackListSkeleton(itemCount: 5),
+                      ),
                     ),
-                  );
-                },
+
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final tracks = ref.watch(
+                        trackProvider.select((s) => s.tracks),
+                      );
+                      final searchArtists = ref.watch(
+                        trackProvider.select((s) => s.searchArtists),
+                      );
+                      final searchAlbums = ref.watch(
+                        trackProvider.select((s) => s.searchAlbums),
+                      );
+                      final searchPlaylists = ref.watch(
+                        trackProvider.select((s) => s.searchPlaylists),
+                      );
+                      final isLoading = ref.watch(
+                        trackProvider.select((s) => s.isLoading),
+                      );
+                      final error = ref.watch(
+                        trackProvider.select((s) => s.error),
+                      );
+                      final searchExtensionId = ref.watch(
+                        trackProvider.select((s) => s.searchExtensionId),
+                      );
+                      final localLibrarySettings = ref.watch(
+                        settingsProvider.select(
+                          (s) => (
+                            s.localLibraryEnabled,
+                            s.localLibraryShowDuplicates,
+                          ),
+                        ),
+                      );
+                      final extensions = ref.watch(
+                        extensionProvider.select((s) => s.extensions),
+                      );
+                      final showLocalLibraryIndicator =
+                          localLibrarySettings.$1 && localLibrarySettings.$2;
+                      final thumbnailSizesByExtensionId =
+                          _getThumbnailSizesByExtensionId(extensions);
+                      final hasResults =
+                          tracks.isNotEmpty ||
+                          (searchArtists != null && searchArtists.isNotEmpty) ||
+                          (searchAlbums != null && searchAlbums.isNotEmpty) ||
+                          (searchPlaylists != null &&
+                              searchPlaylists.isNotEmpty) ||
+                          isLoading ||
+                          error != null;
+
+                      return SliverMainAxisGroup(
+                        slivers: _buildSearchResults(
+                          tracks: tracks,
+                          searchArtists: searchArtists,
+                          searchAlbums: searchAlbums,
+                          searchPlaylists: searchPlaylists,
+                          isLoading: isLoading,
+                          error: error,
+                          colorScheme: colorScheme,
+                          hasResults: hasResults,
+                          searchExtensionId: searchExtensionId,
+                          showLocalLibraryIndicator: showLocalLibraryIndicator,
+                          thumbnailSizesByExtensionId:
+                              thumbnailSizesByExtensionId,
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (hasMiniPlayer)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12 + MediaQuery.paddingOf(context).bottom,
+              child: const LibraryMiniPlayer(),
+            ),
+        ],
       ),
     );
   }

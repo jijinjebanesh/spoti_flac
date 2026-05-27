@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotiflac_android/providers/premium_playback_provider.dart';
 import 'package:spotiflac_android/screens/premium_music_tab.dart';
 import 'package:spotiflac_android/services/library_database.dart';
+import 'package:on_audio_query/on_audio_query.dart';
 
 /// Bottom mini player overlay matching the app's Material 3 styling.
 class LibraryMiniPlayer extends ConsumerWidget {
@@ -125,6 +126,18 @@ class _PlayerCoverArt extends StatelessWidget {
           path,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => _fallback(scheme),
+        );
+      } else if (path.startsWith('content://')) {
+        final uri = Uri.parse(path);
+        final idStr = uri.pathSegments.last;
+        final id = int.tryParse(idStr) ?? 0;
+        image = QueryArtworkWidget(
+          id: id,
+          type: ArtworkType.ALBUM,
+          artworkFit: BoxFit.cover,
+          artworkWidth: size,
+          artworkHeight: size,
+          nullArtworkWidget: _fallback(scheme),
         );
       } else if (File(path).existsSync()) {
         image = Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(scheme));

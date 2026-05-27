@@ -22,6 +22,7 @@ import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/library_recent_downloads_provider.dart';
+import 'package:spotiflac_android/providers/device_folders_provider.dart';
 import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/premium_playback_provider.dart';
 import 'package:spotiflac_android/utils/library_playback_mapper.dart';
@@ -29,13 +30,17 @@ import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/services/local_track_redownload_service.dart';
 import 'package:spotiflac_android/services/history_database.dart';
 import 'package:spotiflac_android/services/downloaded_embedded_cover_resolver.dart';
+import 'package:on_audio_query/on_audio_query.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/screens/favorite_artists_screen.dart';
 import 'package:spotiflac_android/screens/downloaded_album_screen.dart';
 import 'package:spotiflac_android/widgets/re_enrich_field_dialog.dart';
 import 'package:spotiflac_android/widgets/batch_progress_dialog.dart';
 import 'package:spotiflac_android/widgets/cached_cover_image.dart';
+import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/screens/library_tracks_folder_screen.dart';
+import 'package:spotiflac_android/screens/device_folder_tracks_screen.dart';
+import 'package:spotiflac_android/screens/library_tab_screen.dart';
 import 'package:spotiflac_android/screens/local_album_screen.dart';
 import 'package:spotiflac_android/utils/clickable_metadata.dart';
 import 'package:spotiflac_android/utils/path_match_keys.dart';
@@ -258,10 +263,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     if (_isPageControllerInitialized) return;
     _isPageControllerInitialized = true;
     final currentFilter = ref.read(settingsProvider).historyFilterMode;
-    final initialPage = _filterModes.indexOf(currentFilter).clamp(
-      0,
-      _filterModes.length - 1,
-    );
+    final initialPage = _filterModes
+        .indexOf(currentFilter)
+        .clamp(0, _filterModes.length - 1);
     _filterPageController = PageController(initialPage: initialPage);
   }
 
@@ -2072,7 +2076,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     final cleanPath = _cleanFilePath(filePath);
     try {
       final fallbackTitle = cleanPath.split('/').last.split('\\').last;
-      await ref.read(playbackProvider.notifier).playLocalPath(
+      await ref
+          .read(playbackProvider.notifier)
+          .playLocalPath(
             path: cleanPath,
             title: title.isNotEmpty ? title : fallbackTitle,
             artist: artist,
@@ -2099,7 +2105,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       if (item.localItem != null) {
         playable.add(item.localItem!);
       } else if (item.historyItem != null) {
-        playable.add(LibraryPlaybackMapper.fromDownloadHistory(item.historyItem!));
+        playable.add(
+          LibraryPlaybackMapper.fromDownloadHistory(item.historyItem!),
+        );
       }
     }
     if (playable.isEmpty) return;
@@ -2107,10 +2115,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     final targetPath = target.filePath;
     final queueIndex = playable.indexWhere((e) => e.filePath == targetPath);
     try {
-      await ref.read(premiumPlaybackProvider.notifier).playLibrary(
-            playable,
-            startIndex: queueIndex >= 0 ? queueIndex : 0,
-          );
+      await ref
+          .read(premiumPlaybackProvider.notifier)
+          .playLibrary(playable, startIndex: queueIndex >= 0 ? queueIndex : 0);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2128,10 +2135,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required int index,
   }) async {
     try {
-      await ref.read(premiumPlaybackProvider.notifier).playDownloadHistory(
-            items,
-            startIndex: index,
-          );
+      await ref
+          .read(premiumPlaybackProvider.notifier)
+          .playDownloadHistory(items, startIndex: index);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2714,10 +2720,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
     final currentPageData = pageData(historyFilterMode);
     final foldersPageData = pageData('folders');
-    final folderCount = _deviceFolderGroups(
-      localItems: foldersPageData.localItems,
-      historyItems: foldersPageData.historyItems,
-    ).length;
+    final folderCount = ref.watch(deviceFoldersProvider).maybeWhen(
+      data: (folders) => folders.length,
+      orElse: () => 0,
+    );
     final playlistCount = collectionState.playlists.length;
     final currentLoadedCount = switch (historyFilterMode) {
       'albums' =>
@@ -3199,8 +3205,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                 Text(
                   context.l10n.homeRecent,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -3243,9 +3249,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
+                                  style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
                                         color: colorScheme.onSurfaceVariant,
                                       ),
@@ -3292,6 +3296,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required String subtitle,
     required VoidCallback onTap,
     VoidCallback? onLongPress,
+    Widget? trailingWidget,
   }) {
     final cover =
         coverWidget ??
@@ -3345,11 +3350,12 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                color: colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
+              trailingWidget ??
+                  Icon(
+                    Icons.chevron_right,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
             ],
           ),
         ),
@@ -3368,6 +3374,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required int count,
     required VoidCallback onTap,
     VoidCallback? onLongPress,
+    VoidCallback? onPlayAction,
   }) {
     final cover =
         coverWidget ??
@@ -3394,9 +3401,38 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           children: [
             AspectRatio(
               aspectRatio: 1,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: cover,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: cover,
+                  ),
+                  if (onPlayAction != null)
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.play_arrow_rounded,
+                            color: colorScheme.onPrimaryContainer,
+                            size: 20,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          onPressed: onPlayAction,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 6),
@@ -3586,7 +3622,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           iconBgColor: const Color(0xFF1DB954),
           title: context.l10n.collectionWishlist,
           subtitle:
-              '${context.l10n.collectionFoldersTitle} • ${collectionState.wishlistCount} ${collectionState.wishlistCount == 1 ? 'track' : 'tracks'}',
+              '${collectionState.wishlistCount} ${collectionState.wishlistCount == 1 ? 'track' : 'tracks'}',
           onTap: _openWishlistFolder,
         );
       case _CollectionEntryType.loved:
@@ -3598,7 +3634,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           iconBgColor: const Color(0xFF8C67AC),
           title: context.l10n.collectionLoved,
           subtitle:
-              '${context.l10n.collectionFoldersTitle} • ${collectionState.lovedCount} ${collectionState.lovedCount == 1 ? 'track' : 'tracks'}',
+              '${collectionState.lovedCount} ${collectionState.lovedCount == 1 ? 'track' : 'tracks'}',
           onTap: _openLovedFolder,
         );
       case _CollectionEntryType.favoriteArtists:
@@ -3610,7 +3646,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           iconBgColor: const Color(0xFFE91E63),
           title: context.l10n.collectionFavoriteArtists,
           subtitle:
-              '${context.l10n.collectionFoldersTitle} • ${context.l10n.collectionArtistCount(collectionState.favoriteArtistCount)}',
+              '${context.l10n.collectionArtistCount(collectionState.favoriteArtistCount)}',
           onTap: _openFavoriteArtistsFolder,
         );
       case _CollectionEntryType.playlist:
@@ -3688,7 +3724,13 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required List<DownloadHistoryItem> historyItems,
   }) {
     final groups = <String, List<LocalLibraryItem>>{};
+    final addedPaths = <String>{};
+
     void addItem(LocalLibraryItem item) {
+      final pathKey = item.filePath.trim().toLowerCase();
+      if (addedPaths.contains(pathKey)) return;
+      addedPaths.add(pathKey);
+
       final folder = p.dirname(item.filePath);
       (groups[folder] ??= <LocalLibraryItem>[]).add(item);
     }
@@ -3712,10 +3754,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   void _openDeviceFolder(String folderPath, List<LocalLibraryItem> songs) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _DeviceFolderTracksScreen(
-          folderPath: folderPath,
-          songs: songs,
-        ),
+        builder: (_) =>
+            DeviceFolderTracksScreen(folderPath: folderPath, songs: songs),
       ),
     );
   }
@@ -3724,80 +3764,99 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required BuildContext context,
     required ColorScheme colorScheme,
     required String historyViewMode,
-    required List<LocalLibraryItem> localItems,
-    required List<DownloadHistoryItem> historyItems,
-    required bool isPageLoading,
   }) {
-    final folders = _deviceFolderGroups(
-      localItems: localItems,
-      historyItems: historyItems,
-    );
-    final entries = folders.entries.toList();
+    final foldersAsync = ref.watch(deviceFoldersProvider);
 
-    if (isPageLoading && entries.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return foldersAsync.when(
+      data: (folders) {
+        final entries = folders.entries.toList();
 
-    if (entries.isEmpty) {
-      return CustomScrollView(
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: _buildEmptyState(context, colorScheme, 'folders'),
-          ),
-        ],
-      );
-    }
-
-    if (historyViewMode == 'grid') {
-      return CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: _libraryGridExtent,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.9,
+        if (entries.isEmpty) {
+          return CustomScrollView(
+            slivers: [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(context, colorScheme, 'folders'),
               ),
+            ],
+          );
+        }
+
+        if (historyViewMode == 'grid') {
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: _libraryGridExtent,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.66,
+                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final entry = entries[index];
+                    return _buildCollectionGridItem(
+                      context: context,
+                      colorScheme: colorScheme,
+                      icon: Icons.folder_rounded,
+                      iconColor: colorScheme.onPrimaryContainer,
+                      iconBgColor: colorScheme.primaryContainer,
+                      title: _folderDisplayName(entry.key),
+                      count: entry.value.length,
+                      onTap: () => _openDeviceFolder(entry.key, entry.value),
+                    );
+                  }, childCount: entries.length),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return CustomScrollView(
+          slivers: [
+            SliverList(
               delegate: SliverChildBuilderDelegate((context, index) {
                 final entry = entries[index];
-                return _buildCollectionGridItem(
+                return _buildCollectionListItem(
                   context: context,
                   colorScheme: colorScheme,
                   icon: Icons.folder_rounded,
                   iconColor: colorScheme.onPrimaryContainer,
                   iconBgColor: colorScheme.primaryContainer,
                   title: _folderDisplayName(entry.key),
-                  count: entry.value.length,
+                  subtitle:
+                      '${entry.value.length} ${entry.value.length == 1 ? 'track' : 'tracks'}',
                   onTap: () => _openDeviceFolder(entry.key, entry.value),
                 );
               }, childCount: entries.length),
             ),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, color: colorScheme.error, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Error loading folders:\n${e.toString()}',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colorScheme.error),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => ref.invalidate(deviceFoldersProvider),
+                child: const Text('Retry'),
+              ),
+            ],
           ),
-        ],
-      );
-    }
-
-    return CustomScrollView(
-      slivers: [
-        SliverList(
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final entry = entries[index];
-            return _buildCollectionListItem(
-              context: context,
-              colorScheme: colorScheme,
-              icon: Icons.folder_rounded,
-              iconColor: colorScheme.onPrimaryContainer,
-              iconBgColor: colorScheme.primaryContainer,
-              title: _folderDisplayName(entry.key),
-              subtitle: entry.key,
-              onTap: () => _openDeviceFolder(entry.key, entry.value),
-            );
-          }, childCount: entries.length),
         ),
-      ],
+      ),
     );
   }
 
@@ -3859,7 +3918,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                 maxCrossAxisExtent: _libraryGridExtent,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 0.72,
+                childAspectRatio: 0.66,
               ),
               delegate: SliverChildBuilderDelegate((context, index) {
                 final playlist = playlists[index];
@@ -3875,6 +3934,25 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   count: playlist.tracks.length,
                   onTap: () => _openPlaylistById(playlist.id),
                   onLongPress: () => _enterPlaylistSelectionMode(playlist.id),
+                  onPlayAction: () async {
+                    if (playlist.tracks.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Playlist is empty')),
+                      );
+                      return;
+                    }
+                    final tracks = playlist.tracks.map((t) => t.track).toList();
+                    try {
+                      await ref
+                          .read(playbackProvider.notifier)
+                          .playTrackList(tracks, startIndex: 0);
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  },
                 );
               }, childCount: playlists.length),
             ),
@@ -3913,6 +3991,29 @@ class _QueueTabState extends ConsumerState<QueueTab> {
               title: playlist.name,
               subtitle:
                   '${playlist.tracks.length} ${playlist.tracks.length == 1 ? 'track' : 'tracks'}',
+              trailingWidget: IconButton(
+                icon: const Icon(Icons.play_arrow_rounded),
+                tooltip: 'Play Playlist',
+                onPressed: () async {
+                  if (playlist.tracks.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Playlist is empty')),
+                    );
+                    return;
+                  }
+                  final tracks = playlist.tracks.map((t) => t.track).toList();
+                  try {
+                    await ref
+                        .read(playbackProvider.notifier)
+                        .playTrackList(tracks, startIndex: 0);
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                },
+              ),
               onTap: () => _openPlaylistById(playlist.id),
               onLongPress: () => _enterPlaylistSelectionMode(playlist.id),
             );
@@ -3940,9 +4041,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         context: context,
         colorScheme: colorScheme,
         historyViewMode: historyViewMode,
-        localItems: pageLocalItems,
-        historyItems: pageHistoryItems,
-        isPageLoading: isPageLoading,
       );
     }
     if (filterMode == 'playlists') {
@@ -4133,7 +4231,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
               maxCrossAxisExtent: _libraryAlbumGridExtent,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 0.72,
+              childAspectRatio: 0.66,
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   if (index < filteredGroupedAlbums.length) {
@@ -6766,7 +6864,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     return GestureDetector(
       onTap: _isSelectionMode
           ? () => _toggleSelection(item.id)
-          : () => _playUnifiedItems(playbackQueue, startIndex: playbackStartIndex),
+          : () => _playUnifiedItems(
+              playbackQueue,
+              startIndex: playbackStartIndex,
+            ),
       onLongPress: _isSelectionMode
           ? null
           : isDownloaded
@@ -6799,6 +6900,89 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   Positioned(
                     right: 4,
                     top: 4,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          // Show 3 dot menu options
+                          showModalBottomSheet<void>(
+                            context: context,
+                            builder: (context) {
+                              return SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.playlist_add),
+                                      title: const Text('Add to Playlist'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        final track = item.toTrack();
+                                        showAddTrackToPlaylistSheet(
+                                          context,
+                                          ref,
+                                          track,
+                                        );
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.queue_music),
+                                      title: const Text('Add to Queue'),
+                                      onTap: () async {
+                                        Navigator.pop(context);
+                                        try {
+                                          final track = item.toTrack();
+                                          await ref
+                                              .read(playbackProvider.notifier)
+                                              .addTrackToQueue(track);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Added to Queue'),
+                                              ),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(e.toString()),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.8),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.more_vert,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 4,
+                    bottom: 4,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 4,
@@ -7039,56 +7223,4 @@ class _AnimatedLibrarySliverGridState extends State<_AnimatedLibrarySliverGrid>
   }
 }
 
-class _DeviceFolderTracksScreen extends ConsumerWidget {
-  final String folderPath;
-  final List<LocalLibraryItem> songs;
 
-  const _DeviceFolderTracksScreen({
-    required this.folderPath,
-    required this.songs,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final title = p.basename(folderPath).isEmpty ? folderPath : p.basename(folderPath);
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
-        itemCount: songs.length,
-        itemBuilder: (context, index) {
-          final item = songs[index];
-          return ListTile(
-            leading: const Icon(Icons.music_note_rounded),
-            title: Text(
-              item.trackName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              item.artistName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: () => ref
-                .read(premiumPlaybackProvider.notifier)
-                .playLibrary(songs, startIndex: index),
-            onLongPress: () {
-              Navigator.push(
-                context,
-                slidePageRoute<void>(
-                  page: TrackMetadataScreen(
-                    localItem: item,
-                    localNavigationItems: songs,
-                    navigationIndex: index,
-                    coverHeroTag: 'cover_lib_local_${item.id}',
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}

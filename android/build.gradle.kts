@@ -9,6 +9,14 @@ subprojects {
     afterEvaluate {
         if (project.hasProperty("android")) {
             project.extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+                if (namespace == null) {
+                    namespace = project.group.toString().ifEmpty {
+                        "com.zarz.spotiflac.${project.name.replace(":", "_")}"
+                    }
+                }
+                if (project.name != "app") {
+                    compileSdkVersion(36)
+                }
                 compileOptions {
                     isCoreLibraryDesugaringEnabled = true
                     sourceCompatibility = JavaVersion.VERSION_17

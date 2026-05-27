@@ -92,6 +92,8 @@ class AppSettings {
   final bool
   deduplicateDownloads; // Skip downloading tracks already present in history
 
+  final List<String> pinnedFolders; // List of pinned folder paths
+
   const AppSettings({
     this.defaultService = '',
     this.audioQuality = 'LOSSLESS',
@@ -152,6 +154,7 @@ class AppSettings {
     this.musixmatchLanguage = '',
     this.lastSeenVersion = '',
     this.deduplicateDownloads = true,
+    this.pinnedFolders = const [],
   });
 
   AppSettings copyWith({
@@ -217,6 +220,7 @@ class AppSettings {
     String? musixmatchLanguage,
     String? lastSeenVersion,
     bool? deduplicateDownloads,
+    List<String>? pinnedFolders,
   }) {
     return AppSettings(
       defaultService: defaultService ?? this.defaultService,
@@ -300,6 +304,7 @@ class AppSettings {
       musixmatchLanguage: musixmatchLanguage ?? this.musixmatchLanguage,
       lastSeenVersion: lastSeenVersion ?? this.lastSeenVersion,
       deduplicateDownloads: deduplicateDownloads ?? this.deduplicateDownloads,
+      pinnedFolders: pinnedFolders ?? this.pinnedFolders,
     );
   }
 

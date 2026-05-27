@@ -292,8 +292,12 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
     );
     final playable = <LocalLibraryItem>[];
     for (final item in items) {
-      if (!isCueVirtualPath(item.filePath) && await fileExists(item.filePath)) {
+      final isNetwork = item.filePath.startsWith('http://') || item.filePath.startsWith('https://');
+      final isSaf = isContentUri(item.filePath);
+      if (isNetwork || isSaf || isCueVirtualPath(item.filePath) || File(item.filePath).existsSync()) {
         playable.add(item);
+      } else {
+        _log.w('Skipping unplayable item: ${item.trackName}, filePath: "${item.filePath}", isNetwork: $isNetwork');
       }
     }
     if (playable.isEmpty) {
@@ -311,17 +315,33 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
     );
 
     // ✅ FIXED: Load audio sources first (but don't play yet)
-    await _loadAudioSources(playable, initialIndex: safeIndex, autoplay: false);
+    try {
+      await _loadAudioSources(playable, initialIndex: safeIndex, autoplay: false);
 
-    // ✅ FIXED: Set mediaItem BEFORE playing
-    _syncAudioService();
-    _log.i('✓ MediaItem synced for notification');
+      // ✅ FIXED: Set mediaItem BEFORE playing
+      _syncAudioService();
+      _log.i('✓ MediaItem synced for notification');
 
-    // Now play
-    await _player.play();
-    _log.i('▶️ Playback started');
+      // ✅ IMPROVED: Increased delay to ensure just_audio_background fully serializes 
+      // the queue and audio session is completely ready before playback starts.
+      // This prevents missing controls on first playback attempt.
+      _log.i('⏳ Waiting for audio service initialization (300ms)...');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      _log.i('✓ Audio service fully ready, starting playback');
 
-    await _persistQueueState();
+      // Now play
+      await _player.play();
+      _log.i('▶️ Playback started');
+
+      await _persistQueueState();
+    } catch (e) {
+      if (e.toString().contains('interrupted') || e.toString().contains('interruption')) {
+        _log.d('playLibrary interrupted by a newer play request, ignoring.');
+      } else {
+        _log.e('playLibrary failed: $e');
+        rethrow;
+      }
+    }
   }
 
   Future<void> playOne(LocalLibraryItem item) => playLibrary([item]);
@@ -365,15 +385,24 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
     required int initialIndex,
     required bool autoplay,
   }) async {
-    final sources = items.map(_sourceForItem).toList(growable: false);
-    await _player.setAudioSources(
-      sources,
-      initialIndex: initialIndex,
-      initialPosition: Duration.zero,
-    );
-    await _player.setShuffleModeEnabled(state.shuffle);
-    await _player.setLoopMode(_loopModeFor(state.repeatMode));
-    if (autoplay) await _player.play();
+    try {
+      final sources = items.map(_sourceForItem).toList(growable: false);
+      await _player.setAudioSource(
+        ConcatenatingAudioSource(children: sources),
+        initialIndex: initialIndex,
+        initialPosition: Duration.zero,
+      );
+      await _player.setShuffleModeEnabled(state.shuffle);
+      await _player.setLoopMode(_loopModeFor(state.repeatMode));
+      if (autoplay) await _player.play();
+    } catch (e) {
+      if (e.toString().contains('interrupted') || e.toString().contains('interruption')) {
+        _log.d('Playback load interrupted (likely by another play request).');
+      } else {
+        _log.e('Failed to load audio sources: $e');
+        rethrow;
+      }
+    }
   }
 
   AudioSource _sourceForItem(LocalLibraryItem item) {
@@ -383,6 +412,10 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
       artUri = null;
     } else if (cover.startsWith('http://') || cover.startsWith('https://')) {
       artUri = Uri.parse(cover);
+    } else if (cover.startsWith('content://')) {
+      // ✅ FIXED: content:// URIs are Android SAF URIs, parse directly without wrapping
+      artUri = Uri.parse(cover);
+      _log.d('🎨 Cover art from Android SAF: $cover');
     } else {
       artUri = Uri.file(cover);
     }
@@ -421,7 +454,13 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
 
   Uri _uriForPlaybackPath(String path) {
     final trimmed = path.trim();
-    if (trimmed.startsWith('content://')) return Uri.parse(trimmed);
+    if (trimmed.startsWith('content://')) {
+      // ✅ FIXED: content:// URIs are Android SAF URIs, parse directly without Uri.file()
+      return Uri.parse(trimmed);
+    }
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return Uri.parse(trimmed);
+    }
     return Uri.file(trimmed);
   }
 
@@ -505,14 +544,15 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
       queue: queue,
       currentIndex: state.currentIndex < 0 ? 0 : state.currentIndex,
     );
-    if (_player.audioSource == null) {
+    final source = _player.audioSource as ConcatenatingAudioSource?;
+    if (source == null) {
       await _loadAudioSources(
         queue,
         initialIndex: state.currentIndex,
         autoplay: false,
       );
     } else {
-      await _player.addAudioSource(_sourceForItem(item));
+      await source.add(_sourceForItem(item));
     }
     await _persistQueueState();
   }
@@ -526,7 +566,10 @@ class PremiumPlaybackController extends Notifier<PremiumPlaybackState> {
     if (index <= newIndex)
       newIndex = (newIndex - 1).clamp(-1, queue.length - 1);
     state = state.copyWith(queue: queue, currentIndex: newIndex);
-    await _player.removeAudioSourceAt(index);
+    final source = _player.audioSource as ConcatenatingAudioSource?;
+    if (source != null) {
+      await source.removeAt(index);
+    }
     await _persistQueueState();
   }
 

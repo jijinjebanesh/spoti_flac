@@ -10,6 +10,7 @@ import 'package:spotiflac_android/screens/library_tracks_folder_screen.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/widgets/bottom_sheet_option_tile.dart';
 import 'package:spotiflac_android/utils/app_bar_layout.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 
 class LibraryPlaylistsScreen extends ConsumerWidget {
   const LibraryPlaylistsScreen({super.key});
@@ -116,6 +117,27 @@ class LibraryPlaylistsScreen extends ConsumerWidget {
                     context.l10n.collectionPlaylistTracks(
                       playlist.tracks.length,
                     ),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    tooltip: 'Play Playlist',
+                    onPressed: () async {
+                      if (playlist.tracks.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Playlist is empty')),
+                        );
+                        return;
+                      }
+                      final tracks = playlist.tracks.map((t) => t.track).toList();
+                      try {
+                        await ref.read(playbackProvider.notifier).playTrackList(tracks, startIndex: 0);
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString())),
+                        );
+                      }
+                    },
                   ),
                   onTap: () {
                     Navigator.of(context).push(

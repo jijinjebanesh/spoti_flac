@@ -5,6 +5,7 @@ import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/track_provider.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/widgets/track_collection_quick_actions.dart';
 import 'package:spotiflac_android/widgets/animation_utils.dart';
@@ -172,6 +173,20 @@ class _SearchTrackTile extends ConsumerWidget {
     );
   }
 
+  void _playStream(BuildContext context, WidgetRef ref) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Loading stream for ${track.name}...')),
+    );
+    try {
+      await ref.read(playbackProvider.notifier).playStream(track);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -239,13 +254,18 @@ class _SearchTrackTile extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
+            icon: const Icon(Icons.play_arrow_rounded),
+            tooltip: 'Play Preview',
+            onPressed: () => _playStream(context, ref),
+          ),
+          IconButton(
             icon: const Icon(Icons.download_rounded),
             tooltip: context.l10n.dialogDownload,
             onPressed: () => _downloadTrack(context, ref),
           ),
         ],
       ),
-      onTap: () => _downloadTrack(context, ref),
+      onTap: () => _playStream(context, ref),
     );
   }
 }

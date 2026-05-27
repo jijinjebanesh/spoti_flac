@@ -7,6 +7,7 @@ import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/utils/clickable_metadata.dart';
+import 'package:spotiflac_android/providers/playback_provider.dart';
 
 class TrackCollectionQuickActions extends ConsumerWidget {
   final Track track;
@@ -222,7 +223,44 @@ class _TrackOptionsSheet extends ConsumerWidget {
                   showAddTrackToPlaylistSheet(context, ref, track);
                 },
               ),
+              _OptionTile(
+                icon: Icons.queue_music,
+                title: 'Add to Queue', // Use literal string or l10n if available. Fallback to literal for now
+                onTap: () async {
+                  Navigator.pop(context);
+                  try {
+                    await ref.read(playbackProvider.notifier).addTrackToQueue(track);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Added ${track.name} to queue')),
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
+                  }
+                },
+              ),
 
+              _OptionTile(
+                icon: Icons.play_arrow_rounded,
+                title: 'Play Preview',
+                onTap: () async {
+                  Navigator.pop(context);
+                  try {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Loading stream for ${track.name}...')),
+                    );
+                    await ref.read(playbackProvider.notifier).playStream(track);
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
+                  }
+                },
+              ),
               const SizedBox(height: 16),
             ],
           ),

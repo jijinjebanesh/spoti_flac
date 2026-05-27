@@ -15,7 +15,6 @@ import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/notification_service.dart';
 import 'package:spotiflac_android/services/share_intent_service.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/services/audio_service_provider.dart';
 import 'package:spotiflac_android/utils/local_library_scan_prefs.dart';
 
 void main() async {

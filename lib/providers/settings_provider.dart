@@ -600,6 +600,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(deduplicateDownloads: enabled);
     _saveSettings();
   }
+
+  void togglePinnedFolder(String folderPath) {
+    final current = List<String>.from(state.pinnedFolders);
+    if (current.contains(folderPath)) {
+      current.remove(folderPath);
+    } else {
+      current.add(folderPath);
+    }
+    state = state.copyWith(pinnedFolders: current);
+    _saveSettings();
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(

@@ -376,7 +376,30 @@ class _TrackItemWithStatus extends ConsumerWidget {
                     ],
                   ),
                 ),
-                TrackCollectionQuickActions(track: track),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!isInLocalLibrary)
+                      IconButton(
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        tooltip: 'Play Preview',
+                        onPressed: () async {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Loading stream for ${track.name}...')),
+                          );
+                          try {
+                            await ref.read(playbackProvider.notifier).playStream(track);
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
+                        },
+                      ),
+                    TrackCollectionQuickActions(track: track),
+                  ],
+                ),
               ],
             ),
           ),
