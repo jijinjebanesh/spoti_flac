@@ -1231,8 +1231,6 @@ class _HomeTabState extends ConsumerState<HomeTab>
     final hasMiniPlayer = ref.watch(
       premiumPlaybackProvider.select((s) => s.current != null),
     );
-    final miniPlayerBottomInset =
-        (hasMiniPlayer ? 88.0 : 0.0) + MediaQuery.paddingOf(context).bottom;
 
     return GestureDetector(
       onTap: () {

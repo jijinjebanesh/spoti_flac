@@ -93,6 +93,7 @@ class AppSettings {
   deduplicateDownloads; // Skip downloading tracks already present in history
 
   final List<String> pinnedFolders; // List of pinned folder paths
+  final List<String> pinnedPlaylistIds; // List of pinned playlist IDs (always includes 'liked_songs')
 
   const AppSettings({
     this.defaultService = '',
@@ -155,6 +156,7 @@ class AppSettings {
     this.lastSeenVersion = '',
     this.deduplicateDownloads = true,
     this.pinnedFolders = const [],
+    this.pinnedPlaylistIds = const ['liked_songs'], // Always pin Liked Songs by default
   });
 
   AppSettings copyWith({
@@ -221,6 +223,7 @@ class AppSettings {
     String? lastSeenVersion,
     bool? deduplicateDownloads,
     List<String>? pinnedFolders,
+    List<String>? pinnedPlaylistIds,
   }) {
     return AppSettings(
       defaultService: defaultService ?? this.defaultService,
@@ -305,6 +308,7 @@ class AppSettings {
       lastSeenVersion: lastSeenVersion ?? this.lastSeenVersion,
       deduplicateDownloads: deduplicateDownloads ?? this.deduplicateDownloads,
       pinnedFolders: pinnedFolders ?? this.pinnedFolders,
+      pinnedPlaylistIds: pinnedPlaylistIds ?? this.pinnedPlaylistIds,
     );
   }
 

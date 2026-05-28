@@ -6,18 +6,14 @@ import 'package:spotiflac_android/services/audio_service_provider.dart';
 class AudioPlayerNotification extends ConsumerWidget {
   final VoidCallback? onDismiss;
 
-  const AudioPlayerNotification({
-    Key? key,
-    this.onDismiss,
-  }) : super(key: key);
+  const AudioPlayerNotification({Key? key, this.onDismiss}) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final audioState = ref.watch(audioServiceProvider);
 
     // Don't show if nothing is playing
-    if (!audioState.isPlaying && 
-        audioState.currentTrackTitle == null) {
+    if (!audioState.isPlaying && audioState.currentTrackTitle == null) {
       return const SizedBox.shrink();
     }
 
@@ -31,33 +27,35 @@ class AudioPlayerNotification extends ConsumerWidget {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.grey[900],
-          border: Border(
-            top: BorderSide(color: Colors.grey[800]!, width: 1),
-          ),
+          border: Border(top: BorderSide(color: Colors.grey[800]!, width: 1)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Linear progress indicator
             StreamBuilder(
-              stream: Stream.periodic(const Duration(milliseconds: 500)),
+              stream: Stream<int>.periodic(const Duration(milliseconds: 500)),
               builder: (context, snapshot) {
                 final progress = audioState.duration.inMilliseconds > 0
                     ? audioState.position.inMilliseconds /
-                        audioState.duration.inMilliseconds
+                          audioState.duration.inMilliseconds
                     : 0.0;
                 return LinearProgressIndicator(
                   value: progress.clamp(0.0, 1.0),
                   minHeight: 2,
                   backgroundColor: Colors.grey[700],
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF1DB954),
+                  ),
                 );
               },
             ),
             // Notification content
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 8.0,
+              ),
               child: Row(
                 children: [
                   // Cover art or placeholder
@@ -112,8 +110,7 @@ class AudioPlayerNotification extends ConsumerWidget {
                       color: const Color(0xFF1DB954),
                     ),
                     onPressed: () async {
-                      final notifier =
-                          ref.read(audioServiceProvider.notifier);
+                      final notifier = ref.read(audioServiceProvider.notifier);
                       if (audioState.isPlaying) {
                         await notifier.pause();
                       } else {
@@ -143,10 +140,7 @@ class AudioPlayerNotification extends ConsumerWidget {
 class AudioMiniPlayer extends ConsumerStatefulWidget {
   final VoidCallback? onExpand;
 
-  const AudioMiniPlayer({
-    Key? key,
-    this.onExpand,
-  }) : super(key: key);
+  const AudioMiniPlayer({Key? key, this.onExpand}) : super(key: key);
 
   @override
   ConsumerState<AudioMiniPlayer> createState() => _AudioMiniPlayerState();
@@ -181,8 +175,7 @@ class _AudioMiniPlayerState extends ConsumerState<AudioMiniPlayer> {
   Widget build(BuildContext context) {
     final audioState = ref.watch(audioServiceProvider);
 
-    if (!audioState.isPlaying &&
-        audioState.currentTrackTitle == null) {
+    if (!audioState.isPlaying && audioState.currentTrackTitle == null) {
       return const SizedBox.shrink();
     }
 
@@ -201,10 +194,7 @@ class _AudioMiniPlayerState extends ConsumerState<AudioMiniPlayer> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.grey[900],
-              border: Border.all(
-                color: const Color(0xFF1DB954),
-                width: 2,
-              ),
+              border: Border.all(color: const Color(0xFF1DB954), width: 2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.5),
@@ -239,15 +229,12 @@ class _AudioMiniPlayerState extends ConsumerState<AudioMiniPlayer> {
                   radius: 20,
                   child: IconButton(
                     icon: Icon(
-                      audioState.isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
+                      audioState.isPlaying ? Icons.pause : Icons.play_arrow,
                       color: const Color(0xFF1DB954),
                       size: 24,
                     ),
                     onPressed: () async {
-                      final notifier =
-                          ref.read(audioServiceProvider.notifier);
+                      final notifier = ref.read(audioServiceProvider.notifier);
                       if (audioState.isPlaying) {
                         await notifier.pause();
                       } else {

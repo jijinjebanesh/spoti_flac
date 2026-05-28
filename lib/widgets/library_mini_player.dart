@@ -14,14 +14,11 @@ class LibraryMiniPlayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(premiumPlaybackProvider);
-    final item = state.current;
+    // ✅ FIXED: Only watch the current item - NOT position/duration
+    final item = ref.watch(premiumPlaybackProvider.select((s) => s.current));
     if (item == null) return const SizedBox.shrink();
 
     final scheme = Theme.of(context).colorScheme;
-    final progress = state.duration.inMilliseconds == 0
-        ? 0.0
-        : state.position.inMilliseconds / state.duration.inMilliseconds;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -46,64 +43,113 @@ class LibraryMiniPlayer extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: 3,
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    children: [
-                      _PlayerCoverArt(item: item, size: 48),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              item.trackName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            Text(
-                              item.artistName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_previous_rounded),
-                        onPressed:
-                            ref.read(premiumPlaybackProvider.notifier).previous,
-                      ),
-                      FilledButton.tonalIcon(
-                        onPressed: ref
-                            .read(premiumPlaybackProvider.notifier)
-                            .togglePlayPause,
-                        icon: Icon(
-                          state.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                        ),
-                        label: const SizedBox.shrink(),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_next_rounded),
-                        onPressed:
-                            ref.read(premiumPlaybackProvider.notifier).next,
-                      ),
-                    ],
-                  ),
-                ),
+                // ✅ FIXED: Separated progress into dedicated widget
+                _MiniPlayerProgress(),
+                // ✅ FIXED: Isolate cover art in RepaintBoundary to prevent flicker from progress updates
+                RepaintBoundary(child: _MiniPlayerContent(item: item)),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ✅ NEW: Progress bar updates separately without rebuilding cover
+class _MiniPlayerProgress extends ConsumerWidget {
+  const _MiniPlayerProgress();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final position = ref.watch(
+      premiumPlaybackProvider.select((s) => s.position),
+    );
+    final duration = ref.watch(
+      premiumPlaybackProvider.select((s) => s.duration),
+    );
+    final progress = duration.inMilliseconds == 0
+        ? 0.0
+        : position.inMilliseconds / duration.inMilliseconds;
+    return LinearProgressIndicator(
+      value: progress.clamp(0.0, 1.0),
+      minHeight: 3,
+    );
+  }
+}
+
+// ✅ NEW: Controls update separately without rebuilding cover
+class _MiniPlayerControls extends ConsumerWidget {
+  const _MiniPlayerControls();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playing = ref.watch(premiumPlaybackProvider.select((s) => s.playing));
+    final notifier = ref.read(premiumPlaybackProvider.notifier);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.skip_previous_rounded),
+          onPressed: notifier.previous,
+        ),
+        FilledButton.tonalIcon(
+          onPressed: notifier.togglePlayPause,
+          icon: Icon(
+            playing
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
+          ),
+          label: const SizedBox.shrink(),
+        ),
+        IconButton(
+          icon: const Icon(Icons.skip_next_rounded),
+          onPressed: notifier.next,
+        ),
+      ],
+    );
+  }
+}
+
+// ✅ NEW: Isolate mini player content from progress bar updates
+class _MiniPlayerContent extends StatelessWidget {
+  final LocalLibraryItem item;
+  const _MiniPlayerContent({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          // ✅ FIXED: High-quality cover art with RepaintBoundary
+          RepaintBoundary(
+            child: _PlayerCoverArt(item: item, size: 48),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  item.trackName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                  item.artistName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _MiniPlayerControls(),
+        ],
       ),
     );
   }
@@ -125,6 +171,7 @@ class _PlayerCoverArt extends StatelessWidget {
         image = Image.network(
           path,
           fit: BoxFit.cover,
+          filterQuality: FilterQuality.high, // ✅ FIXED: High quality image rendering
           errorBuilder: (_, __, ___) => _fallback(scheme),
         );
       } else if (path.startsWith('content://')) {
@@ -132,15 +179,22 @@ class _PlayerCoverArt extends StatelessWidget {
         final idStr = uri.pathSegments.last;
         final id = int.tryParse(idStr) ?? 0;
         image = QueryArtworkWidget(
+          key: ValueKey(path),
           id: id,
           type: ArtworkType.ALBUM,
           artworkFit: BoxFit.cover,
-          artworkWidth: size,
-          artworkHeight: size,
+          artworkWidth: size.toDouble(), // ✅ FIXED: Use toDouble() for proper sizing
+          artworkHeight: size.toDouble(), // ✅ FIXED: Use toDouble() for proper sizing
+          artworkQuality: FilterQuality.high, // ✅ FIXED: High quality artwork
           nullArtworkWidget: _fallback(scheme),
         );
       } else if (File(path).existsSync()) {
-        image = Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(scheme));
+        image = Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high, // ✅ FIXED: High quality image rendering
+          errorBuilder: (_, __, ___) => _fallback(scheme),
+        );
       } else {
         image = _fallback(scheme);
       }
@@ -148,9 +202,11 @@ class _PlayerCoverArt extends StatelessWidget {
       image = _fallback(scheme);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: SizedBox(width: size, height: size, child: image),
+    return RepaintBoundary( // ✅ FIXED: Isolate cover art in RepaintBoundary
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(width: size, height: size, child: image),
+      ),
     );
   }
 

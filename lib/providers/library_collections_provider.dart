@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/services/library_collections_database.dart';
+import 'package:spotiflac_android/services/playlist_backup_service.dart';
+import 'package:spotiflac_android/utils/logger.dart';
 
 String trackCollectionKey(Track track) {
   final isrc = track.isrc?.trim();
@@ -40,6 +42,9 @@ String artistCollectionKey({
             : 'builtin');
   return '$source:${_stripCollectionResourcePrefix(trimmedArtistId)}';
 }
+
+final _log = AppLogger('LibraryCollections');
+final _backupService = PlaylistBackupService();
 
 class CollectionTrackEntry {
   final String key;
@@ -508,8 +513,112 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         favoriteArtists: favoriteArtists,
         isLoaded: true,
       );
+
+      // ✅ NEW: Ensure default "Liked Songs" playlist exists
+      await _ensureDefaultPlaylistExists();
     } catch (_) {
       state = state.copyWith(isLoaded: true);
+    }
+  }
+
+  // ✅ NEW: Ensure "Liked Songs" default playlist always exists
+  Future<void> _ensureDefaultPlaylistExists() async {
+    const likedSongsId = 'liked_songs';
+    final exists = state.playlists.any((p) => p.id == likedSongsId);
+
+    if (!exists) {
+      _log.i('Creating default "Liked Songs" playlist...');
+      final now = DateTime.now();
+      final playlist = UserPlaylistCollection(
+        id: likedSongsId,
+        name: 'Liked Songs',
+        createdAt: now,
+        updatedAt: now,
+        tracks: const [],
+      );
+
+      await _db.upsertPlaylist(
+        id: likedSongsId,
+        name: 'Liked Songs',
+        coverImagePath: null,
+        createdAt: now.toIso8601String(),
+        updatedAt: now.toIso8601String(),
+      );
+
+      // Add to the beginning of the list (pinned position)
+      state = state.copyWith(playlists: [playlist, ...state.playlists]);
+      _invalidatePlaylistPickerSummaries();
+      _log.i('✓ Default "Liked Songs" playlist created and pinned');
+    }
+  }
+
+  // ✅ NEW: Auto-restore playlists from backup if only "Liked Songs" exists
+  Future<void> autoRestorePlaylistsFromBackupIfNeeded(
+    String downloadDirectory,
+  ) async {
+    if (downloadDirectory.isEmpty) {
+      _log.w('⚠️ Download directory not configured, skipping auto-restore');
+      return;
+    }
+
+    // Only auto-restore if we only have the default "Liked Songs" playlist
+    if (state.playlists.length > 1 ||
+        (state.playlists.isNotEmpty &&
+            state.playlists.first.id != 'liked_songs')) {
+      _log.d('Skipping auto-restore: user already has custom playlists');
+      return;
+    }
+
+    final backup = await _backupService.restorePlaylistsFromBackup(
+      downloadDirectory,
+    );
+
+    if (backup == null) return;
+    if (backup.playlists.isEmpty) return;
+
+    _log.i('Restoring ${backup.playlists.length} playlists from backup...');
+
+    try {
+      // Restore each playlist
+      for (final playlistBackup in backup.playlists) {
+        // Skip if it's the liked_songs playlist (already created)
+        if (playlistBackup.id == 'liked_songs') continue;
+
+        // Insert playlist into database
+        await _db.upsertPlaylist(
+          id: playlistBackup.id,
+          name: playlistBackup.name,
+          coverImagePath: playlistBackup.coverImagePath,
+          createdAt: playlistBackup.createdAt.toIso8601String(),
+          updatedAt: playlistBackup.updatedAt.toIso8601String(),
+        );
+
+        // Insert tracks into playlist
+        for (final trackBackup in playlistBackup.tracks) {
+          try {
+            final trackJson = jsonDecode(trackBackup.trackJson);
+            final track = Track.fromJson(
+              Map<String, dynamic>.from(trackJson as Map<dynamic, dynamic>),
+            );
+
+            await _db.upsertPlaylistTrack(
+              playlistId: playlistBackup.id,
+              trackKey: trackBackup.trackKey,
+              trackJson: jsonEncode(track.toJson()),
+              addedAt: trackBackup.addedAt.toIso8601String(),
+              playlistUpdatedAt: DateTime.now().toIso8601String(),
+            );
+          } catch (e) {
+            _log.w('Failed to restore track: $e');
+          }
+        }
+      }
+
+      // Reload playlists from database
+      await _load();
+      _log.i('✅ Successfully restored playlists from backup');
+    } catch (e, stack) {
+      _log.e('Failed to restore playlists from backup: $e', e, stack);
     }
   }
 

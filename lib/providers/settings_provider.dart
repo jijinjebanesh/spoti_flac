@@ -440,6 +440,48 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  // ✅ NEW: Pin/unpin folder methods for quick navigation
+  void togglePinnedFolder(String folderPath) {
+    final pinned = {...state.pinnedFolders};
+    if (pinned.contains(folderPath)) {
+      pinned.remove(folderPath);
+      _log.i('📌 Unpinned folder: $folderPath');
+    } else {
+      pinned.add(folderPath);
+      _log.i('📌 Pinned folder: $folderPath');
+    }
+    state = state.copyWith(pinnedFolders: pinned.toList());
+    _saveSettings();
+  }
+
+  bool isFolderPinned(String folderPath) {
+    return state.pinnedFolders.contains(folderPath);
+  }
+
+  // ✅ NEW: Pin/unpin playlist methods
+  void togglePinnedPlaylist(String playlistId) {
+    // "liked_songs" must always be pinned
+    if (playlistId == 'liked_songs') {
+      _log.i('Cannot unpin "Liked Songs" - it is always pinned');
+      return;
+    }
+
+    final pinned = {...state.pinnedPlaylistIds};
+    if (pinned.contains(playlistId)) {
+      pinned.remove(playlistId);
+      _log.i('📌 Unpinned playlist: $playlistId');
+    } else {
+      pinned.add(playlistId);
+      _log.i('📌 Pinned playlist: $playlistId');
+    }
+    state = state.copyWith(pinnedPlaylistIds: pinned.toList());
+    _saveSettings();
+  }
+
+  bool isPlaylistPinned(String playlistId) {
+    return state.pinnedPlaylistIds.contains(playlistId);
+  }
+
   void setHistoryViewMode(String mode) {
     state = state.copyWith(historyViewMode: mode);
     _saveSettings();
@@ -598,17 +640,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setDeduplicateDownloads(bool enabled) {
     state = state.copyWith(deduplicateDownloads: enabled);
-    _saveSettings();
-  }
-
-  void togglePinnedFolder(String folderPath) {
-    final current = List<String>.from(state.pinnedFolders);
-    if (current.contains(folderPath)) {
-      current.remove(folderPath);
-    } else {
-      current.add(folderPath);
-    }
-    state = state.copyWith(pinnedFolders: current);
     _saveSettings();
   }
 }

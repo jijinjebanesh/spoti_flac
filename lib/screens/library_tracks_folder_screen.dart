@@ -14,7 +14,6 @@ import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
-import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/widgets/download_service_picker.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/providers/premium_playback_provider.dart';
@@ -254,20 +253,12 @@ class _LibraryTracksFolderScreenState
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final rawCoverUrl = track.coverUrl?.trim();
-    final localCoverUrl = rawCoverUrl == null
-        ? ref
-              .watch(
-                localLibraryCoverProvider(
-                  LocalLibraryCoverRequest(
-                    isrc: track.isrc?.trim(),
-                    trackName: track.name,
-                    artistName: track.artistName,
-                  ),
-                ),
-              )
-              .maybeWhen(data: (cover) => cover, orElse: () => null)
+    final resolvedCoverUrl = track.coverUrl?.trim();
+
+    final effectiveCoverUrl =
+        (resolvedCoverUrl != null && resolvedCoverUrl.isNotEmpty)
+        ? resolvedCoverUrl
         : null;
-    final effectiveCoverUrl = rawCoverUrl ?? localCoverUrl;
 
     final trackIndex = folderTracks.indexWhere(
       (t) =>
@@ -293,7 +284,7 @@ class _LibraryTracksFolderScreenState
               ref
                   .read(playbackProvider.notifier)
                   .playTrackList(folderTracks, startIndex: trackIndex)
-                  .catchError((e) {
+                  .catchError((Object e) {
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(
                       context,
@@ -327,21 +318,6 @@ class _LibraryTracksFolderScreenState
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
-            ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.7),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
             ),
             if (isSelected)
               Positioned(
@@ -444,14 +420,17 @@ class _LibraryTracksFolderScreenState
         File(coverUrl),
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => placeholder(),
+        cacheWidth: 1024,
+        cacheHeight: 1024,
+        filterQuality: FilterQuality.medium,
       );
     }
 
     return CachedNetworkImage(
       imageUrl: coverUrl,
       fit: BoxFit.cover,
-      memCacheWidth: 256,
+      memCacheWidth: 1024,
+      memCacheHeight: 1024,
       cacheManager: CoverCacheManager.instance,
       placeholder: (_, _) => placeholder(),
       errorWidget: (_, __, ___) => placeholder(),
@@ -539,7 +518,9 @@ class _LibraryTracksFolderScreenState
 
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    final hasMiniPlayer = ref.watch(premiumPlaybackProvider.select((s) => s.current != null));
+    final hasMiniPlayer = ref.watch(
+      premiumPlaybackProvider.select((s) => s.current != null),
+    );
     final miniPlayerInset = hasMiniPlayer ? 88.0 : 0.0;
 
     return PopScope(
@@ -618,7 +599,9 @@ class _LibraryTracksFolderScreenState
                     }, childCount: entries.length),
                   ),
                 SliverToBoxAdapter(
-                  child: SizedBox(height: _isSelectionMode ? 200 : (32 + miniPlayerInset)),
+                  child: SizedBox(
+                    height: _isSelectionMode ? 200 : (32 + miniPlayerInset),
+                  ),
                 ),
               ],
             ),
@@ -642,7 +625,9 @@ class _LibraryTracksFolderScreenState
                 left: 12,
                 right: 12,
                 bottom: 12 + bottomPadding,
-                child: const LibraryMiniPlayer(),
+                child: RepaintBoundary(  // ✅ Add this line to isolate repaints
+                  child: const LibraryMiniPlayer(),
+                ),
               ),
           ],
         ),
@@ -1059,7 +1044,7 @@ class _LibraryTracksFolderScreenState
                               _buildHeaderActionPlaceholder(),
                               const SizedBox(width: 12),
                               _buildDownloadAllCenterButton(entries),
-                              const SizedBox(width: 12),
+                              const Spacer(),
                               _buildPlayAllButton(entries),
                             ],
                           ),
@@ -1381,20 +1366,12 @@ class _CollectionTrackTile extends ConsumerWidget {
     final track = entry.track;
     final colorScheme = Theme.of(context).colorScheme;
     final rawCoverUrl = _resolveRawCoverUrl(track);
-    final localCoverUrl = rawCoverUrl == null
-        ? ref
-              .watch(
-                localLibraryCoverProvider(
-                  LocalLibraryCoverRequest(
-                    isrc: track.isrc?.trim(),
-                    trackName: track.name,
-                    artistName: track.artistName,
-                  ),
-                ),
-              )
-              .maybeWhen(data: (cover) => cover, orElse: () => null)
+    final resolvedCoverUrl = track.coverUrl?.trim();
+
+    final effectiveCoverUrl =
+        (resolvedCoverUrl != null && resolvedCoverUrl.isNotEmpty)
+        ? resolvedCoverUrl
         : null;
-    final effectiveCoverUrl = rawCoverUrl ?? localCoverUrl;
 
     // Fine-grained provider watches – only this tile rebuilds when its own
     // history / local-library entry changes.
@@ -1428,9 +1405,7 @@ class _CollectionTrackTile extends ConsumerWidget {
           )
         : false;
 
-    final heroTag = inMemoryHistoryItem != null
-        ? 'cover_${inMemoryHistoryItem.id}'
-        : null;
+    final heroTag = 'now-art-${track.id}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1582,7 +1557,7 @@ class _CollectionTrackTile extends ConsumerWidget {
                     ref
                         .read(playbackProvider.notifier)
                         .playTrackList(folderTracks, startIndex: trackIndex)
-                        .catchError((e) {
+                        .catchError((Object e) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(
                             context,
@@ -1593,7 +1568,7 @@ class _CollectionTrackTile extends ConsumerWidget {
                     ref
                         .read(playbackProvider.notifier)
                         .playTrackList(folderTracks, startIndex: trackIndex)
-                        .catchError((e) {
+                        .catchError((Object e) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(
                             context,
@@ -1663,10 +1638,12 @@ class _CollectionTrackTile extends ConsumerWidget {
       width: size,
       height: size,
       fit: BoxFit.cover,
-      memCacheWidth: (size * 2).toInt(),
+      memCacheWidth: 512,
+      memCacheHeight: 512,
       cacheManager: CoverCacheManager.instance,
-      fadeInDuration: const Duration(milliseconds: 180),
-      fadeOutDuration: const Duration(milliseconds: 90),
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      placeholderFadeInDuration: Duration.zero,
       placeholder: (_, _) => placeholder(),
       errorWidget: (_, _, _) => placeholder(),
     );
@@ -1711,50 +1688,6 @@ class _CollectionTrackTile extends ConsumerWidget {
         SnackBar(content: Text(context.l10n.snackbarAddedToQueue(track.name))),
       );
     }
-  }
-
-  Future<void> _navigateToMetadata(BuildContext context, WidgetRef ref) async {
-    final track = entry.track;
-    final historyNotifier = ref.read(downloadHistoryProvider.notifier);
-
-    var historyItem = await historyNotifier.getBySpotifyIdAsync(track.id);
-    if (!context.mounted) return;
-
-    if (historyItem == null && track.isrc != null && track.isrc!.isNotEmpty) {
-      historyItem = await historyNotifier.getByIsrcAsync(track.isrc!);
-      if (!context.mounted) return;
-    }
-
-    historyItem ??= await historyNotifier.findByTrackAndArtistAsync(
-      track.name,
-      track.artistName,
-    );
-    if (!context.mounted) return;
-
-    if (historyItem != null) {
-      await Navigator.of(context).push(
-        slidePageRoute<void>(page: TrackMetadataScreen(item: historyItem)),
-      );
-      return;
-    }
-
-    final localItem = await ref
-        .read(localLibraryProvider.notifier)
-        .findExistingAsync(
-          isrc: track.isrc,
-          trackName: track.name,
-          artistName: track.artistName,
-        );
-    if (!context.mounted) return;
-
-    if (localItem != null) {
-      await Navigator.of(context).push(
-        slidePageRoute<void>(page: TrackMetadataScreen(localItem: localItem)),
-      );
-      return;
-    }
-
-    _downloadTrack(context, ref);
   }
 }
 

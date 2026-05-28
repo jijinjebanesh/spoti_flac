@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
+import '_static_art.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -55,9 +57,13 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
       final rows = await LibraryDatabase.instance.getPage(
         LocalLibraryPageRequest(limit: 5000, sortMode: _sort),
       );
-      final items = rows.map(LocalLibraryItem.fromJson).where((item) {
-        return !item.filePath.contains('.cue#') && File(item.filePath).existsSync();
-      }).toList(growable: false);
+      final items = rows
+          .map(LocalLibraryItem.fromJson)
+          .where((item) {
+            return !item.filePath.contains('.cue#') &&
+                File(item.filePath).existsSync();
+          })
+          .toList(growable: false);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -75,18 +81,22 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
   List<LocalLibraryItem> get _filteredItems {
     final q = _searchController.text.trim().toLowerCase();
     if (q.isEmpty) return _items;
-    return _items.where((item) {
-      return item.trackName.toLowerCase().contains(q) ||
-          item.artistName.toLowerCase().contains(q) ||
-          item.albumName.toLowerCase().contains(q) ||
-          (item.genre ?? '').toLowerCase().contains(q) ||
-          item.filePath.toLowerCase().contains(q);
-    }).toList(growable: false);
+    return _items
+        .where((item) {
+          return item.trackName.toLowerCase().contains(q) ||
+              item.artistName.toLowerCase().contains(q) ||
+              item.albumName.toLowerCase().contains(q) ||
+              (item.genre ?? '').toLowerCase().contains(q) ||
+              item.filePath.toLowerCase().contains(q);
+        })
+        .toList(growable: false);
   }
 
   List<LocalLibraryItem> _itemsByIds(Iterable<String> ids) {
     final wanted = ids.toSet();
-    return _items.where((item) => wanted.contains(item.id)).toList(growable: false);
+    return _items
+        .where((item) => wanted.contains(item.id))
+        .toList(growable: false);
   }
 
   @override
@@ -142,11 +152,26 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
                 _load();
               },
               itemBuilder: (context) => const [
-                PopupMenuItem(value: LocalLibrarySortMode.album, child: Text('Album order')),
-                PopupMenuItem(value: LocalLibrarySortMode.title, child: Text('Title')),
-                PopupMenuItem(value: LocalLibrarySortMode.artist, child: Text('Artist')),
-                PopupMenuItem(value: LocalLibrarySortMode.latest, child: Text('Recently added')),
-                PopupMenuItem(value: LocalLibrarySortMode.quality, child: Text('Quality')),
+                PopupMenuItem(
+                  value: LocalLibrarySortMode.album,
+                  child: Text('Album order'),
+                ),
+                PopupMenuItem(
+                  value: LocalLibrarySortMode.title,
+                  child: Text('Title'),
+                ),
+                PopupMenuItem(
+                  value: LocalLibrarySortMode.artist,
+                  child: Text('Artist'),
+                ),
+                PopupMenuItem(
+                  value: LocalLibrarySortMode.latest,
+                  child: Text('Recently added'),
+                ),
+                PopupMenuItem(
+                  value: LocalLibrarySortMode.quality,
+                  child: Text('Quality'),
+                ),
               ],
             ),
             IconButton(
@@ -201,35 +226,91 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _EmptyMusicState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Library unavailable',
-                    subtitle: _error!,
-                    action: FilledButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry'),
+            ? _EmptyMusicState(
+                icon: Icons.error_outline_rounded,
+                title: 'Library unavailable',
+                subtitle: _error!,
+                action: FilledButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                ),
+              )
+            : filtered.isEmpty
+            ? const _EmptyMusicState(
+                icon: Icons.library_music_outlined,
+                title: 'No downloaded songs found',
+                subtitle:
+                    'Scan your download folder from Library settings, or download music first.',
+              )
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _SongsList(
+                    items: filtered,
+                    selected: _selected,
+                    onToggleSelect: _toggleSelect,
+                  ),
+                  _GroupedList(
+                    groups: _groupBy(
+                      filtered,
+                      (i) =>
+                          i.albumName.isEmpty ? 'Unknown album' : i.albumName,
+                      subtitle: (songs) => songs.first.artistName,
                     ),
-                  )
-                : filtered.isEmpty
-                    ? const _EmptyMusicState(
-                        icon: Icons.library_music_outlined,
-                        title: 'No downloaded songs found',
-                        subtitle: 'Scan your download folder from Library settings, or download music first.',
-                      )
-                    : TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _SongsList(items: filtered, selected: _selected, onToggleSelect: _toggleSelect),
-                          _GroupedList(groups: _groupBy(filtered, (i) => i.albumName.isEmpty ? 'Unknown album' : i.albumName, subtitle: (songs) => songs.first.artistName), icon: Icons.album_rounded),
-                          _GroupedList(groups: _groupBy(filtered, (i) => i.artistName.isEmpty ? 'Unknown artist' : i.artistName), icon: Icons.person_rounded),
-                          _GroupedList(groups: _groupBy(filtered, (i) => (i.genre?.trim().isEmpty ?? true) ? 'Unknown genre' : i.genre!.trim()), icon: Icons.auto_awesome_rounded),
-                          _GroupedList(groups: _groupBy(filtered, (i) => File(i.filePath).parent.path), icon: Icons.folder_rounded),
-                          _SongsList(items: _itemsByIds(playback.recentlyPlayedIds).where(filtered.contains).toList(), selected: _selected, onToggleSelect: _toggleSelect),
-                          _SongsList(items: [...filtered]..sort((a, b) => (playback.playCounts[b.id] ?? 0).compareTo(playback.playCounts[a.id] ?? 0)), selected: _selected, onToggleSelect: _toggleSelect),
-                          _SongsList(items: filtered.where((i) => playback.favorites.contains(i.id)).toList(), selected: _selected, onToggleSelect: _toggleSelect),
-                        ],
+                    icon: Icons.album_rounded,
+                  ),
+                  _GroupedList(
+                    groups: _groupBy(
+                      filtered,
+                      (i) => i.artistName.isEmpty
+                          ? 'Unknown artist'
+                          : i.artistName,
+                    ),
+                    icon: Icons.person_rounded,
+                  ),
+                  _GroupedList(
+                    groups: _groupBy(
+                      filtered,
+                      (i) => (i.genre?.trim().isEmpty ?? true)
+                          ? 'Unknown genre'
+                          : i.genre!.trim(),
+                    ),
+                    icon: Icons.auto_awesome_rounded,
+                  ),
+                  _GroupedList(
+                    groups: _groupBy(
+                      filtered,
+                      (i) => File(i.filePath).parent.path,
+                    ),
+                    icon: Icons.folder_rounded,
+                  ),
+                  _SongsList(
+                    items: _itemsByIds(
+                      playback.recentlyPlayedIds,
+                    ).where(filtered.contains).toList(),
+                    selected: _selected,
+                    onToggleSelect: _toggleSelect,
+                  ),
+                  _SongsList(
+                    items: [...filtered]
+                      ..sort(
+                        (a, b) => (playback.playCounts[b.id] ?? 0).compareTo(
+                          playback.playCounts[a.id] ?? 0,
+                        ),
                       ),
+                    selected: _selected,
+                    onToggleSelect: _toggleSelect,
+                  ),
+                  _SongsList(
+                    items: filtered
+                        .where((i) => playback.favorites.contains(i.id))
+                        .toList(),
+                    selected: _selected,
+                    onToggleSelect: _toggleSelect,
+                  ),
+                ],
+              ),
       ),
       bottomNavigationBar: playback.current == null
           ? null
@@ -244,8 +325,14 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
       floatingActionButton: filtered.isEmpty
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => ref.read(premiumPlaybackProvider.notifier).playLibrary(filtered),
-              icon: Icon(playback.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded),
+              onPressed: () => ref
+                  .read(premiumPlaybackProvider.notifier)
+                  .playLibrary(filtered),
+              icon: Icon(
+                playback.playing
+                    ? Icons.graphic_eq_rounded
+                    : Icons.play_arrow_rounded,
+              ),
               label: const Text('Play all'),
               backgroundColor: colorScheme.primaryContainer,
             ),
@@ -261,7 +348,9 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
     for (final item in items) {
       (map[keyOf(item)] ??= <LocalLibraryItem>[]).add(item);
     }
-    return Map.fromEntries(map.entries.toList()..sort((a, b) => a.key.compareTo(b.key)));
+    return Map.fromEntries(
+      map.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+    );
   }
 
   void _toggleSelect(LocalLibraryItem item) {
@@ -284,10 +373,18 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete downloaded files?'),
-        content: Text('This permanently deletes ${selectedItems.length} local audio file(s).'),
+        content: Text(
+          'This permanently deletes ${selectedItems.length} local audio file(s).',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton.tonal(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -310,7 +407,10 @@ class _PremiumMusicTabState extends ConsumerState<PremiumMusicTab>
         transitionDuration: const Duration(milliseconds: 420),
         reverseTransitionDuration: const Duration(milliseconds: 320),
         pageBuilder: (_, animation, __) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
           child: const NowPlayingScreen(),
         ),
       ),
@@ -323,14 +423,24 @@ class _SongsList extends ConsumerWidget {
   final Set<String> selected;
   final ValueChanged<LocalLibraryItem> onToggleSelect;
 
-  const _SongsList({required this.items, required this.selected, required this.onToggleSelect});
+  const _SongsList({
+    required this.items,
+    required this.selected,
+    required this.onToggleSelect,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (items.isEmpty) {
-      return const _EmptyMusicState(icon: Icons.music_note_rounded, title: 'Nothing here yet', subtitle: 'Play music and mark favorites to fill this view.');
+      return const _EmptyMusicState(
+        icon: Icons.music_note_rounded,
+        title: 'Nothing here yet',
+        subtitle: 'Play music and mark favorites to fill this view.',
+      );
     }
-    final bottomPadding = ref.watch(premiumPlaybackProvider).current == null ? 96.0 : 170.0;
+    final bottomPadding = ref.watch(premiumPlaybackProvider).current == null
+        ? 96.0
+        : 170.0;
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding),
       itemCount: items.length,
@@ -343,7 +453,9 @@ class _SongsList extends ConsumerWidget {
           onLongPress: () => onToggleSelect(item),
           onTap: selected.isNotEmpty
               ? () => onToggleSelect(item)
-              : () => ref.read(premiumPlaybackProvider.notifier).playLibrary(items, startIndex: index),
+              : () => ref
+                    .read(premiumPlaybackProvider.notifier)
+                    .playLibrary(items, startIndex: index),
         );
       },
     );
@@ -368,15 +480,27 @@ class _GroupedList extends ConsumerWidget {
         return Card(
           child: ListTile(
             leading: _CoverArt(item: songs.first, icon: icon, size: 54),
-            title: Text(entry.key, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${songs.length} song${songs.length == 1 ? '' : 's'} • ${songs.first.artistName}', maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(
+              entry.key,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              '${songs.length} song${songs.length == 1 ? '' : 's'} • ${songs.first.artistName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             trailing: IconButton(
               icon: const Icon(Icons.play_arrow_rounded),
-              onPressed: () => ref.read(premiumPlaybackProvider.notifier).playLibrary(songs),
+              onPressed: () =>
+                  ref.read(premiumPlaybackProvider.notifier).playLibrary(songs),
             ),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => _GroupSongsScreen(title: entry.key, songs: songs),
-            )),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    _GroupSongsScreen(title: entry.key, songs: songs),
+              ),
+            ),
           ),
         );
       },
@@ -400,7 +524,9 @@ class _GroupSongsScreen extends StatelessWidget {
           itemCount: songs.length,
           itemBuilder: (context, index) => _SongTile(
             item: songs[index],
-            onTap: () => ref.read(premiumPlaybackProvider.notifier).playLibrary(songs, startIndex: index),
+            onTap: () => ref
+                .read(premiumPlaybackProvider.notifier)
+                .playLibrary(songs, startIndex: index),
           ),
         ),
       ),
@@ -414,7 +540,12 @@ class _SongTile extends ConsumerWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  const _SongTile({required this.item, this.selected = false, this.onTap, this.onLongPress});
+  const _SongTile({
+    required this.item,
+    this.selected = false,
+    this.onTap,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -429,14 +560,24 @@ class _SongTile extends ConsumerWidget {
         color: selected
             ? scheme.primaryContainer.withValues(alpha: .65)
             : isCurrent
-                ? scheme.secondaryContainer.withValues(alpha: .5)
-                : Colors.transparent,
+            ? scheme.secondaryContainer.withValues(alpha: .5)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(18),
       ),
       child: ListTile(
         leading: _CoverArt(item: item, size: 52),
-        title: Text(item.trackName.isEmpty ? File(item.filePath).uri.pathSegments.last : item.trackName, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${item.artistName} • ${_qualityLabel(item)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          item.trackName.isEmpty
+              ? File(item.filePath).uri.pathSegments.last
+              : item.trackName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${item.artistName} • ${_qualityLabel(item)}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: selected
             ? Icon(Icons.check_circle_rounded, color: scheme.primary)
             : Wrap(
@@ -444,8 +585,14 @@ class _SongTile extends ConsumerWidget {
                 children: [
                   IconButton(
                     tooltip: favorite ? 'Remove favorite' : 'Favorite',
-                    icon: Icon(favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded),
-                    onPressed: () => ref.read(premiumPlaybackProvider.notifier).toggleFavorite(item),
+                    icon: Icon(
+                      favorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                    ),
+                    onPressed: () => ref
+                        .read(premiumPlaybackProvider.notifier)
+                        .toggleFavorite(item),
                   ),
                   IconButton(
                     tooltip: 'Add to playlist',
@@ -459,7 +606,9 @@ class _SongTile extends ConsumerWidget {
                   IconButton(
                     tooltip: 'Add to queue',
                     icon: const Icon(Icons.queue_play_next_rounded),
-                    onPressed: () => ref.read(premiumPlaybackProvider.notifier).addToQueue(item),
+                    onPressed: () => ref
+                        .read(premiumPlaybackProvider.notifier)
+                        .addToQueue(item),
                   ),
                 ],
               ),
@@ -476,11 +625,10 @@ class _MiniPlayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(premiumPlaybackProvider);
-    final item = state.current;
+    // ✅ FIXED: Only watch the current item - NOT position/duration
+    final item = ref.watch(premiumPlaybackProvider.select((s) => s.current));
     if (item == null) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
-    final progress = state.duration.inMilliseconds == 0 ? 0.0 : state.position.inMilliseconds / state.duration.inMilliseconds;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -492,33 +640,110 @@ class _MiniPlayer extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                LinearProgressIndicator(value: progress.clamp(0.0, 1.0), minHeight: 3),
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    children: [
-                      Hero(tag: 'now-art-${item.id}', child: _CoverArt(item: item, size: 48)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                          Text(item.trackName, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium),
-                          Text(item.artistName, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
-                        ]),
-                      ),
-                      IconButton(icon: const Icon(Icons.skip_previous_rounded), onPressed: ref.read(premiumPlaybackProvider.notifier).previous),
-                      FilledButton.tonalIcon(
-                        onPressed: ref.read(premiumPlaybackProvider.notifier).togglePlayPause,
-                        icon: Icon(state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                        label: const SizedBox.shrink(),
-                      ),
-                      IconButton(icon: const Icon(Icons.skip_next_rounded), onPressed: ref.read(premiumPlaybackProvider.notifier).next),
-                    ],
-                  ),
-                ),
+                // ✅ FIXED: Separated progress into dedicated widget
+                _MiniPlayerProgress(),
+                // ✅ FIXED: Isolate cover art in RepaintBoundary to prevent flicker from progress updates
+                RepaintBoundary(child: _MiniPlayerContent(item: item)),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ✅ NEW: Progress bar updates separately without rebuilding cover
+class _MiniPlayerProgress extends ConsumerWidget {
+  const _MiniPlayerProgress();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final position = ref.watch(
+      premiumPlaybackProvider.select((s) => s.position),
+    );
+    final duration = ref.watch(
+      premiumPlaybackProvider.select((s) => s.duration),
+    );
+    final progress = duration.inMilliseconds == 0
+        ? 0.0
+        : position.inMilliseconds / duration.inMilliseconds;
+    return LinearProgressIndicator(
+      value: progress.clamp(0.0, 1.0),
+      minHeight: 3,
+    );
+  }
+}
+
+// ✅ NEW: Controls update separately without rebuilding cover
+class _MiniPlayerControls extends ConsumerWidget {
+  const _MiniPlayerControls();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playing = ref.watch(premiumPlaybackProvider.select((s) => s.playing));
+    final notifier = ref.read(premiumPlaybackProvider.notifier);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+          onPressed: notifier.togglePlayPause,
+        ),
+        IconButton(
+          icon: const Icon(Icons.skip_next_rounded),
+          onPressed: notifier.next,
+        ),
+      ],
+    );
+  }
+}
+
+// ✅ NEW: Isolate mini player content from progress bar updates
+class _MiniPlayerContent extends StatelessWidget {
+  final LocalLibraryItem item;
+  const _MiniPlayerContent({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: _CoverArt(item: item, size: 52),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  item.trackName.isEmpty
+                      ? File(item.filePath).uri.pathSegments.last
+                      : item.trackName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                Text(
+                  item.artistName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _MiniPlayerControls(),
+        ],
       ),
     );
   }
@@ -529,11 +754,19 @@ class NowPlayingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(premiumPlaybackProvider);
-    final item = state.current;
+    // ✅ FIXED: Only watch the item and favorites - NOT position/duration which update frequently
+    final item = ref.watch(premiumPlaybackProvider.select((s) => s.current));
+    final favorites = ref.watch(
+      premiumPlaybackProvider.select((s) => s.favorites),
+    );
+
     final scheme = Theme.of(context).colorScheme;
-    if (item == null) return const Scaffold(body: Center(child: Text('Nothing playing')));
-    final art = item.coverPath == null ? null : File(item.coverPath!);
+    if (item == null)
+      return const Scaffold(body: Center(child: Text('Nothing playing')));
+    if (item.coverPath != null) {
+      // Cover path is available for potential use
+      final _ = File(item.coverPath!);
+    }
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -550,32 +783,24 @@ class NowPlayingScreen extends ConsumerWidget {
             ),
           ),
           IconButton(
-            icon: Icon(state.favorites.contains(item.id) ? Icons.favorite_rounded : Icons.favorite_border_rounded),
-            onPressed: () => ref.read(premiumPlaybackProvider.notifier).toggleFavorite(item),
+            icon: Icon(
+              favorites.contains(item.id)
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+            ),
+            onPressed: () =>
+                ref.read(premiumPlaybackProvider.notifier).toggleFavorite(item),
           ),
-          IconButton(icon: const Icon(Icons.queue_music_rounded), onPressed: () => _showQueue(context, ref)),
+          IconButton(
+            icon: const Icon(Icons.queue_music_rounded),
+            onPressed: () => _showQueue(context, ref),
+          ),
         ],
       ),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (item.coverPath != null && item.coverPath!.isNotEmpty)
-            if (item.coverPath!.startsWith('http://') || item.coverPath!.startsWith('https://'))
-              Image.network(item.coverPath!, fit: BoxFit.cover)
-            else if (item.coverPath!.startsWith('content://'))
-              QueryArtworkWidget(
-                id: int.tryParse(Uri.parse(item.coverPath!).pathSegments.last) ?? 0,
-                type: ArtworkType.ALBUM,
-                artworkFit: BoxFit.cover,
-                nullArtworkWidget: ColoredBox(color: scheme.surface),
-              )
-            else if (File(item.coverPath!).existsSync())
-              Image.file(File(item.coverPath!), fit: BoxFit.cover)
-            else
-              ColoredBox(color: scheme.surface)
-          else
-            ColoredBox(color: scheme.surface),
-          BackdropFilter(filter: ImageFilter.blur(sigmaX: 38, sigmaY: 38), child: ColoredBox(color: scheme.surface.withValues(alpha: .72))),
+          const StaticArt(), // ✅ Isolates background/cover from rebuilds
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
@@ -585,8 +810,10 @@ class NowPlayingScreen extends ConsumerWidget {
                   GestureDetector(
                     onHorizontalDragEnd: (details) {
                       final v = details.primaryVelocity ?? 0;
-                      if (v < -250) ref.read(premiumPlaybackProvider.notifier).next();
-                      if (v > 250) ref.read(premiumPlaybackProvider.notifier).previous();
+                      if (v < -250)
+                        ref.read(premiumPlaybackProvider.notifier).next();
+                      if (v > 250)
+                        ref.read(premiumPlaybackProvider.notifier).previous();
                     },
                     child: Hero(
                       tag: 'now-art-${item.id}',
@@ -597,7 +824,8 @@ class NowPlayingScreen extends ConsumerWidget {
                   Text.rich(
                     TextSpan(
                       text: item.trackName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -607,65 +835,17 @@ class NowPlayingScreen extends ConsumerWidget {
                   Text.rich(
                     TextSpan(
                       text: item.artistName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 18),
-                  _WaveformProgress(position: state.position, duration: state.duration, buffered: state.bufferedPosition),
-                  Row(
-                    children: [
-                      Text(_fmt(state.position)),
-                      const Spacer(),
-                      Text(_fmt(state.duration)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton.filledTonal(
-                        icon: Icon(state.shuffle ? Icons.shuffle_on_rounded : Icons.shuffle_rounded),
-                        onPressed: () => ref.read(premiumPlaybackProvider.notifier).setShuffle(!state.shuffle),
-                      ),
-                      IconButton.filledTonal(iconSize: 34, icon: const Icon(Icons.skip_previous_rounded), onPressed: ref.read(premiumPlaybackProvider.notifier).previous),
-                      FilledButton(
-                        style: FilledButton.styleFrom(shape: const CircleBorder(), padding: const EdgeInsets.all(24)),
-                        onPressed: ref.read(premiumPlaybackProvider.notifier).togglePlayPause,
-                        child: Icon(state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42),
-                      ),
-                      IconButton.filledTonal(iconSize: 34, icon: const Icon(Icons.skip_next_rounded), onPressed: ref.read(premiumPlaybackProvider.notifier).next),
-                      IconButton.filledTonal(
-                        icon: Icon(switch (state.repeatMode) { PremiumRepeatMode.one => Icons.repeat_one_rounded, PremiumRepeatMode.all => Icons.repeat_on_rounded, _ => Icons.repeat_rounded }),
-                        onPressed: ref.read(premiumPlaybackProvider.notifier).cycleRepeatMode,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      ActionChip(
-                        avatar: const Icon(Icons.speed_rounded, size: 18),
-                        label: Text('${state.speed.toStringAsFixed(2)}×'),
-                        onPressed: () => _showSpeed(context, ref, state.speed),
-                      ),
-                      ActionChip(
-                        avatar: const Icon(Icons.bedtime_rounded, size: 18),
-                        label: Text(state.hasSleepTimer ? 'Sleep on' : 'Sleep timer'),
-                        onPressed: () => _showSleepTimer(context, ref),
-                      ),
-                      ActionChip(
-                        avatar: const Icon(Icons.lyrics_rounded, size: 18),
-                        label: const Text('Lyrics'),
-                        onPressed: () => showPremiumLyricsSheet(context, item),
-                      ),
-                    ],
-                  ),
+                  // ✅ FIXED: Separated high-frequency updating controls into dedicated widget
+                  _NowPlayingControls(itemId: item.id),
                   const Spacer(),
                 ],
               ),
@@ -686,13 +866,137 @@ class NowPlayingScreen extends ConsumerWidget {
   }
 }
 
+// ✅ NEW: Separate widget that only watches high-frequency properties
+class _NowPlayingControls extends ConsumerWidget {
+  final String itemId;
+  const _NowPlayingControls({required this.itemId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // ✅ FIXED: Only watch the properties that change frequently
+    final position = ref.watch(
+      premiumPlaybackProvider.select((s) => s.position),
+    );
+    final duration = ref.watch(
+      premiumPlaybackProvider.select((s) => s.duration),
+    );
+    final buffered = ref.watch(
+      premiumPlaybackProvider.select((s) => s.bufferedPosition),
+    );
+    final playing = ref.watch(premiumPlaybackProvider.select((s) => s.playing));
+    final shuffle = ref.watch(premiumPlaybackProvider.select((s) => s.shuffle));
+    final repeatMode = ref.watch(
+      premiumPlaybackProvider.select((s) => s.repeatMode),
+    );
+    final speed = ref.watch(premiumPlaybackProvider.select((s) => s.speed));
+    final hasSleepTimer = ref.watch(
+      premiumPlaybackProvider.select((s) => s.hasSleepTimer),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _WaveformProgress(
+          position: position,
+          duration: duration,
+          buffered: buffered,
+        ),
+        Row(
+          children: [
+            Text(_fmt(position)),
+            const Spacer(),
+            Text(_fmt(duration)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton.filledTonal(
+              icon: Icon(
+                shuffle ? Icons.shuffle_on_rounded : Icons.shuffle_rounded,
+              ),
+              onPressed: () => ref
+                  .read(premiumPlaybackProvider.notifier)
+                  .setShuffle(!shuffle),
+            ),
+            IconButton.filledTonal(
+              iconSize: 34,
+              icon: const Icon(Icons.skip_previous_rounded),
+              onPressed: ref.read(premiumPlaybackProvider.notifier).previous,
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                shape: const CircleBorder(),
+                padding: const EdgeInsets.all(24),
+              ),
+              onPressed: ref
+                  .read(premiumPlaybackProvider.notifier)
+                  .togglePlayPause,
+              child: Icon(
+                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 42,
+              ),
+            ),
+            IconButton.filledTonal(
+              iconSize: 34,
+              icon: const Icon(Icons.skip_next_rounded),
+              onPressed: ref.read(premiumPlaybackProvider.notifier).next,
+            ),
+            IconButton.filledTonal(
+              icon: Icon(switch (repeatMode) {
+                PremiumRepeatMode.one => Icons.repeat_one_rounded,
+                PremiumRepeatMode.all => Icons.repeat_on_rounded,
+                _ => Icons.repeat_rounded,
+              }),
+              onPressed: ref
+                  .read(premiumPlaybackProvider.notifier)
+                  .cycleRepeatMode,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [
+            ActionChip(
+              avatar: const Icon(Icons.speed_rounded, size: 18),
+              label: Text('${speed.toStringAsFixed(2)}×'),
+              onPressed: () => _showSpeed(context, ref, speed),
+            ),
+            ActionChip(
+              avatar: const Icon(Icons.bedtime_rounded, size: 18),
+              label: Text(hasSleepTimer ? 'Sleep on' : 'Sleep timer'),
+              onPressed: () => _showSleepTimer(context, ref),
+            ),
+            ActionChip(
+              avatar: const Icon(Icons.lyrics_rounded, size: 18),
+              label: const Text('Lyrics'),
+              onPressed: () {
+                // Get item from provider to access it
+                final current = ref.read(premiumPlaybackProvider).current;
+                if (current != null) {
+                  showPremiumLyricsSheet(context, current);
+                }
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _PlaybackQueueSheet extends ConsumerStatefulWidget {
   final WidgetRef parentRef;
 
   const _PlaybackQueueSheet({required this.parentRef});
 
   @override
-  ConsumerState<_PlaybackQueueSheet> createState() => _PlaybackQueueSheetState();
+  ConsumerState<_PlaybackQueueSheet> createState() =>
+      _PlaybackQueueSheetState();
 }
 
 class _PlaybackQueueSheetState extends ConsumerState<_PlaybackQueueSheet> {
@@ -722,8 +1026,8 @@ class _PlaybackQueueSheetState extends ConsumerState<_PlaybackQueueSheet> {
                   Text(
                     '${state.queue.length} tracks',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -750,7 +1054,8 @@ class _PlaybackQueueSheetState extends ConsumerState<_PlaybackQueueSheet> {
                   return Material(
                     key: ValueKey('queue-${item.id}-$index'),
                     color: isCurrent
-                        ? Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: .45)
+                        ? Theme.of(context).colorScheme.secondaryContainer
+                              .withValues(alpha: .45)
                         : null,
                     child: ListTile(
                       leading: ReorderableDragStartListener(
@@ -772,7 +1077,10 @@ class _PlaybackQueueSheetState extends ConsumerState<_PlaybackQueueSheet> {
                         onPressed: () => notifier.removeAt(index),
                       ),
                       onTap: () async {
-                        await notifier.playLibrary(state.queue, startIndex: index);
+                        await notifier.playLibrary(
+                          state.queue,
+                          startIndex: index,
+                        );
                         if (context.mounted) Navigator.pop(context);
                       },
                     ),
@@ -791,7 +1099,11 @@ class _WaveformProgress extends ConsumerStatefulWidget {
   final Duration position;
   final Duration duration;
   final Duration buffered;
-  const _WaveformProgress({required this.position, required this.duration, required this.buffered});
+  const _WaveformProgress({
+    required this.position,
+    required this.duration,
+    required this.buffered,
+  });
 
   @override
   ConsumerState<_WaveformProgress> createState() => _WaveformProgressState();
@@ -802,19 +1114,28 @@ class _WaveformProgressState extends ConsumerState<_WaveformProgress> {
 
   @override
   Widget build(BuildContext context) {
-    final max = widget.duration.inMilliseconds <= 0 ? 1.0 : widget.duration.inMilliseconds.toDouble();
+    final max = widget.duration.inMilliseconds <= 0
+        ? 1.0
+        : widget.duration.inMilliseconds.toDouble();
     final value = _dragValue ?? widget.position.inMilliseconds.toDouble();
-    
+
     return SliderTheme(
-      data: SliderTheme.of(context).copyWith(trackHeight: 8, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7)),
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 8,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+      ),
       child: Slider(
         value: value.clamp(0.0, max),
         max: max,
-        secondaryTrackValue: widget.buffered.inMilliseconds.clamp(0, max.toInt()).toDouble(),
+        secondaryTrackValue: widget.buffered.inMilliseconds
+            .clamp(0, max.toInt())
+            .toDouble(),
         onChangeStart: (v) => setState(() => _dragValue = v),
         onChanged: (v) => setState(() => _dragValue = v),
         onChangeEnd: (v) {
-          ref.read(premiumPlaybackProvider.notifier).seek(Duration(milliseconds: v.round()));
+          ref
+              .read(premiumPlaybackProvider.notifier)
+              .seek(Duration(milliseconds: v.round()));
           setState(() => _dragValue = null);
         },
       ),
@@ -833,17 +1154,23 @@ class _AnimatedDiscArt extends ConsumerWidget {
       tween: Tween(begin: 0, end: playing ? 1 : 0),
       duration: const Duration(milliseconds: 700),
       curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Transform.rotate(
-        angle: value * math.pi / 80,
-        child: child,
-      ),
+      builder: (context, value, child) =>
+          Transform.rotate(angle: value * math.pi / 80, child: child),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 340, maxHeight: 340),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .25), blurRadius: 38, offset: const Offset(0, 24))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .25),
+              blurRadius: 38,
+              offset: const Offset(0, 24),
+            ),
+          ],
         ),
-        child: ClipOval(child: _CoverArt(item: item, size: 340, icon: Icons.album_rounded)),
+        child: ClipOval(
+          child: _CoverArt(item: item, size: 340, icon: Icons.album_rounded),
+        ),
       ),
     );
   }
@@ -853,7 +1180,11 @@ class _CoverArt extends StatelessWidget {
   final LocalLibraryItem item;
   final double size;
   final IconData icon;
-  const _CoverArt({required this.item, this.size = 56, this.icon = Icons.music_note_rounded});
+  const _CoverArt({
+    required this.item,
+    required this.size,
+    this.icon = Icons.music_note_rounded,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -865,6 +1196,7 @@ class _CoverArt extends StatelessWidget {
         image = Image.network(
           path,
           fit: BoxFit.cover,
+          filterQuality: FilterQuality.high, // ✅ High quality image rendering
           errorBuilder: (_, __, ___) => _fallback(scheme),
         );
       } else if (path.startsWith('content://')) {
@@ -872,15 +1204,22 @@ class _CoverArt extends StatelessWidget {
         final idStr = uri.pathSegments.last;
         final id = int.tryParse(idStr) ?? 0;
         image = QueryArtworkWidget(
+          key: ValueKey(path), // ✅ Stable key for content:// URIs
           id: id,
           type: ArtworkType.ALBUM,
           artworkFit: BoxFit.cover,
-          artworkWidth: size,
-          artworkHeight: size,
+          artworkWidth: size.toDouble(), // ✅ Proper sizing
+          artworkHeight: size.toDouble(), // ✅ Proper sizing
+          artworkQuality: FilterQuality.high, // ✅ High quality artwork
           nullArtworkWidget: _fallback(scheme),
         );
       } else if (File(path).existsSync()) {
-        image = Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(scheme));
+        image = Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high, // ✅ High quality image rendering
+          errorBuilder: (_, __, ___) => _fallback(scheme),
+        );
       } else {
         image = _fallback(scheme);
       }
@@ -888,22 +1227,22 @@ class _CoverArt extends StatelessWidget {
       image = _fallback(scheme);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(size > 100 ? 32 : 14),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: image,
+    return RepaintBoundary( // ✅ Isolate cover art to prevent flickering
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size > 100 ? 32 : 14),
+        child: SizedBox(width: size, height: size, child: image),
       ),
     );
   }
 
   Widget _fallback(ColorScheme scheme) => DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [scheme.primaryContainer, scheme.tertiaryContainer]),
-        ),
-        child: Icon(icon, color: scheme.onPrimaryContainer, size: size * .48),
-      );
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [scheme.primaryContainer, scheme.tertiaryContainer],
+      ),
+    ),
+    child: Icon(icon, color: scheme.onPrimaryContainer, size: size * .48),
+  );
 }
 
 class _EmptyMusicState extends StatelessWidget {
@@ -911,7 +1250,12 @@ class _EmptyMusicState extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget? action;
-  const _EmptyMusicState({required this.icon, required this.title, required this.subtitle, this.action});
+  const _EmptyMusicState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.action,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -919,14 +1263,27 @@ class _EmptyMusicState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 64, color: scheme.primary),
-          const SizedBox(height: 16),
-          Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(subtitle, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
-          if (action != null) ...[const SizedBox(height: 20), action!],
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 64, color: scheme.primary),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            if (action != null) ...[const SizedBox(height: 20), action!],
+          ],
+        ),
       ),
     );
   }
@@ -936,7 +1293,9 @@ String _qualityLabel(LocalLibraryItem item) {
   final parts = <String>[];
   if (item.format != null) parts.add(item.format!.toUpperCase());
   if (item.bitDepth != null && item.sampleRate != null) {
-    parts.add('${item.bitDepth}-bit ${(item.sampleRate! / 1000).toStringAsFixed(1)} kHz');
+    parts.add(
+      '${item.bitDepth}-bit ${(item.sampleRate! / 1000).toStringAsFixed(1)} kHz',
+    );
   } else if (item.bitrate != null) {
     parts.add('${item.bitrate} kbps');
   }
@@ -958,20 +1317,26 @@ void _showSpeed(BuildContext context, WidgetRef ref, double speed) {
     builder: (context) => StatefulBuilder(
       builder: (context, setModalState) => Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Playback speed', style: Theme.of(context).textTheme.titleLarge),
-          Slider(
-            min: .5,
-            max: 2,
-            divisions: 30,
-            value: speed,
-            label: '${speed.toStringAsFixed(2)}×',
-            onChanged: (v) {
-              setModalState(() => speed = v);
-              ref.read(premiumPlaybackProvider.notifier).setSpeed(v);
-            },
-          ),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Playback speed',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            Slider(
+              min: .5,
+              max: 2,
+              divisions: 30,
+              value: speed,
+              label: '${speed.toStringAsFixed(2)}×',
+              onChanged: (v) {
+                setModalState(() => speed = v);
+                ref.read(premiumPlaybackProvider.notifier).setSpeed(v);
+              },
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -983,18 +1348,29 @@ void _showSleepTimer(BuildContext context, WidgetRef ref) {
     showDragHandle: true,
     builder: (context) => Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-      child: Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final minutes in [15, 30, 45, 60, 90])
-          ActionChip(label: Text('$minutes min'), onPressed: () {
-            ref.read(premiumPlaybackProvider.notifier).startSleepTimer(Duration(minutes: minutes));
-            Navigator.pop(context);
-          }),
-        ActionChip(label: const Text('Cancel timer'), onPressed: () {
-          ref.read(premiumPlaybackProvider.notifier).cancelSleepTimer();
-          Navigator.pop(context);
-        }),
-      ]),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final minutes in [15, 30, 45, 60, 90])
+            ActionChip(
+              label: Text('$minutes min'),
+              onPressed: () {
+                ref
+                    .read(premiumPlaybackProvider.notifier)
+                    .startSleepTimer(Duration(minutes: minutes));
+                Navigator.pop(context);
+              },
+            ),
+          ActionChip(
+            label: const Text('Cancel timer'),
+            onPressed: () {
+              ref.read(premiumPlaybackProvider.notifier).cancelSleepTimer();
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
-

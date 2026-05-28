@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:path/path.dart' as p;
-import 'package:spotiflac_android/models/track.dart';
 import 'package:spotiflac_android/providers/premium_playback_provider.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/widgets/library_mini_player.dart';
@@ -21,10 +20,12 @@ class DeviceFolderTracksScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<DeviceFolderTracksScreen> createState() => _DeviceFolderTracksScreenState();
+  ConsumerState<DeviceFolderTracksScreen> createState() =>
+      _DeviceFolderTracksScreenState();
 }
 
-class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScreen> {
+class _DeviceFolderTracksScreenState
+    extends ConsumerState<DeviceFolderTracksScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   List<LocalLibraryItem> _filteredSongs = [];
@@ -55,7 +56,7 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
       } else {
         _filteredSongs = widget.songs.where((item) {
           return item.trackName.toLowerCase().contains(query) ||
-                 item.artistName.toLowerCase().contains(query);
+              item.artistName.toLowerCase().contains(query);
         }).toList();
       }
     });
@@ -63,7 +64,7 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
 
   void _scrollToLetter(String letter) {
     if (_filteredSongs.isEmpty) return;
-    
+
     int targetIndex = -1;
     if (letter == '#') {
       targetIndex = 0;
@@ -82,8 +83,8 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
       // We will use a fallback estimation
       final crossAxisCount = MediaQuery.of(context).size.width ~/ 130;
       final row = targetIndex ~/ crossAxisCount;
-      final offset = row * 190.0; 
-      
+      final offset = row * 190.0;
+
       _scrollController.animateTo(
         offset.clamp(0.0, _scrollController.position.maxScrollExtent),
         duration: const Duration(milliseconds: 200),
@@ -97,7 +98,7 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
     final itemHeight = constraints.maxHeight / _alphabet.length;
     int index = (y / itemHeight).floor();
     index = index.clamp(0, _alphabet.length - 1);
-    
+
     final letter = _alphabet[index];
     if (letter != _currentLetter) {
       setState(() {
@@ -112,13 +113,16 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
     final title = p.basename(widget.folderPath).isEmpty
         ? widget.folderPath
         : p.basename(widget.folderPath);
-    
-    final hasMiniPlayer = ref.watch(premiumPlaybackProvider.select((s) => s.current != null));
+
+    final hasMiniPlayer = ref.watch(
+      premiumPlaybackProvider.select((s) => s.current != null),
+    );
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final miniPlayerInset = hasMiniPlayer ? 88.0 : 0.0;
 
     return Scaffold(
       appBar: AppBar(
+        scrolledUnderElevation: 0,
         title: Text(title),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
@@ -144,7 +148,12 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
         children: [
           GridView.builder(
             controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(16, 16, 36, 32 + bottomPadding + miniPlayerInset),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              36,
+              32 + bottomPadding + miniPlayerInset,
+            ),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 130,
               mainAxisSpacing: 12,
@@ -161,7 +170,7 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
               );
             },
           ),
-          
+
           if (_filteredSongs.isNotEmpty)
             Positioned(
               right: 2,
@@ -202,10 +211,13 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
                                 letter,
                                 style: TextStyle(
                                   fontSize: 10,
-                                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                                  color: isActive 
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: .5),
+                                  fontWeight: isActive
+                                      ? FontWeight.bold
+                                      : FontWeight.w500,
+                                  color: isActive
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: .5),
                                 ),
                               ),
                             ),
@@ -240,7 +252,9 @@ class _DeviceFolderTracksScreenState extends ConsumerState<DeviceFolderTracksScr
               left: 12,
               right: 12,
               bottom: 12 + bottomPadding,
-              child: const LibraryMiniPlayer(),
+              child: RepaintBoundary(  // ✅ Add this line to isolate repaints
+                child: const LibraryMiniPlayer(),
+              ),
             ),
         ],
       ),
@@ -262,12 +276,16 @@ class _FolderTrackTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     Widget image;
     final path = item.coverPath;
     if (path != null && path.isNotEmpty) {
       if (path.startsWith('http://') || path.startsWith('https://')) {
-        image = Image.network(path, fit: BoxFit.cover, errorBuilder: (_,__,___) => _fallback(colorScheme));
+        image = Image.network(
+          path,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(colorScheme),
+        );
       } else if (path.startsWith('content://')) {
         final uri = Uri.parse(path);
         final idStr = uri.pathSegments.last;
@@ -279,7 +297,11 @@ class _FolderTrackTile extends ConsumerWidget {
           nullArtworkWidget: _fallback(colorScheme),
         );
       } else if (File(path).existsSync()) {
-        image = Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_,__,___) => _fallback(colorScheme));
+        image = Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(colorScheme),
+        );
       } else {
         image = _fallback(colorScheme);
       }
@@ -329,12 +351,14 @@ class _FolderTrackTile extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                item.trackName.isEmpty ? p.basename(item.filePath) : item.trackName,
+                item.trackName.isEmpty
+                    ? p.basename(item.filePath)
+                    : item.trackName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 2),
               Text(

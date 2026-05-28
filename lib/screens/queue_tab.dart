@@ -30,7 +30,6 @@ import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/services/local_track_redownload_service.dart';
 import 'package:spotiflac_android/services/history_database.dart';
 import 'package:spotiflac_android/services/downloaded_embedded_cover_resolver.dart';
-import 'package:on_audio_query/on_audio_query.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
 import 'package:spotiflac_android/screens/favorite_artists_screen.dart';
 import 'package:spotiflac_android/screens/downloaded_album_screen.dart';
@@ -40,7 +39,6 @@ import 'package:spotiflac_android/widgets/cached_cover_image.dart';
 import 'package:spotiflac_android/widgets/playlist_picker_sheet.dart';
 import 'package:spotiflac_android/screens/library_tracks_folder_screen.dart';
 import 'package:spotiflac_android/screens/device_folder_tracks_screen.dart';
-import 'package:spotiflac_android/screens/library_tab_screen.dart';
 import 'package:spotiflac_android/screens/local_album_screen.dart';
 import 'package:spotiflac_android/utils/clickable_metadata.dart';
 import 'package:spotiflac_android/utils/path_match_keys.dart';
@@ -140,10 +138,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   PageController? _filterPageController;
   final List<String> _filterModes = [
     'all',
-    'albums',
-    'singles',
     'folders',
     'playlists',
+    'albums',
+    'singles'
   ];
   bool _isPageControllerInitialized = false;
   static const List<String> _months = [
@@ -2719,11 +2717,11 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     }
 
     final currentPageData = pageData(historyFilterMode);
-    final foldersPageData = pageData('folders');
-    final folderCount = ref.watch(deviceFoldersProvider).maybeWhen(
-      data: (folders) => folders.length,
-      orElse: () => 0,
-    );
+    // Folders page data loaded for reference
+    final _ = pageData('folders');
+    final folderCount = ref
+        .watch(deviceFoldersProvider)
+        .maybeWhen(data: (folders) => folders.length, orElse: () => 0);
     final playlistCount = collectionState.playlists.length;
     final currentLoadedCount = switch (historyFilterMode) {
       'albums' =>
@@ -2927,30 +2925,12 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                   },
                                 ),
                                 const SizedBox(width: 8),
-                                _FilterChip(
-                                  label: context.l10n.historyFilterAlbums,
-                                  count: filteredAlbumCount,
-                                  isSelected: historyFilterMode == 'albums',
-                                  onTap: () {
-                                    _animateToFilterPage(1);
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _FilterChip(
-                                  label: context.l10n.historyFilterSingles,
-                                  count: filteredSingleCount,
-                                  isSelected: historyFilterMode == 'singles',
-                                  onTap: () {
-                                    _animateToFilterPage(2);
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _FilterChip(
+                                  _FilterChip(
                                   label: context.l10n.historyFilterFolders,
                                   count: folderCount,
                                   isSelected: historyFilterMode == 'folders',
                                   onTap: () {
-                                    _animateToFilterPage(3);
+                                    _animateToFilterPage(1);
                                   },
                                 ),
                                 const SizedBox(width: 8),
@@ -2959,9 +2939,28 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                   count: playlistCount,
                                   isSelected: historyFilterMode == 'playlists',
                                   onTap: () {
+                                    _animateToFilterPage(2);
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _FilterChip(
+                                  label: context.l10n.historyFilterAlbums,
+                                  count: filteredAlbumCount,
+                                  isSelected: historyFilterMode == 'albums',
+                                  onTap: () {
+                                    _animateToFilterPage(3);
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _FilterChip(
+                                  label: context.l10n.historyFilterSingles,
+                                  count: filteredSingleCount,
+                                  isSelected: historyFilterMode == 'singles',
+                                  onTap: () {
                                     _animateToFilterPage(4);
                                   },
                                 ),
+                              
                               ],
                             ),
                           );
@@ -3363,6 +3362,176 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     );
   }
 
+  // ✅ NEW: Folder grid item with pin button
+  Widget _buildFolderGridItem({
+    required BuildContext context,
+    required ColorScheme colorScheme,
+    required String folderPath,
+    required String folderName,
+    required int trackCount,
+    required bool isPinned,
+    required VoidCallback onTap,
+    required VoidCallback onPinToggle,
+  }) {
+    final cover = Container(
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        Icons.folder_rounded,
+        color: colorScheme.onPrimaryContainer,
+        size: 40,
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      label: context.l10n.a11yOpenItemCount(folderName, trackCount),
+      child: RepaintBoundary(  // ✅ Add this line to isolate repaints
+        child: GestureDetector(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: cover,
+                    ),
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.secondaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                            color: colorScheme.onSecondaryContainer,
+                            size: 18,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          onPressed: onPinToggle,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                folderName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+              ),
+              Text(
+                context.l10n.itemCount(trackCount),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ NEW: Folder list item with pin button
+  Widget _buildFolderListItem({
+    required BuildContext context,
+    required ColorScheme colorScheme,
+    required String folderPath,
+    required String folderName,
+    required int trackCount,
+    required bool isPinned,
+    required VoidCallback onTap,
+    required VoidCallback onPinToggle,
+  }) {
+    final cover = Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        Icons.folder_rounded,
+        color: colorScheme.onPrimaryContainer,
+        size: 28,
+      ),
+    );
+
+    return RepaintBoundary(  // ✅ Add this line to isolate repaints
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                SizedBox(width: 56, height: 56, child: cover),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        folderName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${trackCount} ${trackCount == 1 ? 'track' : 'tracks'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  onPressed: onPinToggle,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCollectionGridItem({
     required BuildContext context,
     required ColorScheme colorScheme,
@@ -3719,33 +3888,6 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     }
   }
 
-  Map<String, List<LocalLibraryItem>> _deviceFolderGroups({
-    required List<LocalLibraryItem> localItems,
-    required List<DownloadHistoryItem> historyItems,
-  }) {
-    final groups = <String, List<LocalLibraryItem>>{};
-    final addedPaths = <String>{};
-
-    void addItem(LocalLibraryItem item) {
-      final pathKey = item.filePath.trim().toLowerCase();
-      if (addedPaths.contains(pathKey)) return;
-      addedPaths.add(pathKey);
-
-      final folder = p.dirname(item.filePath);
-      (groups[folder] ??= <LocalLibraryItem>[]).add(item);
-    }
-
-    for (final item in localItems) {
-      addItem(item);
-    }
-    for (final history in historyItems) {
-      addItem(LibraryPlaybackMapper.fromDownloadHistory(history));
-    }
-
-    final sortedKeys = groups.keys.toList()..sort((a, b) => a.compareTo(b));
-    return {for (final key in sortedKeys) key: groups[key]!};
-  }
-
   String _folderDisplayName(String folderPath) {
     final name = p.basename(folderPath);
     return name.isEmpty ? folderPath : name;
@@ -3766,10 +3908,21 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     required String historyViewMode,
   }) {
     final foldersAsync = ref.watch(deviceFoldersProvider);
+    final settings = ref.watch(settingsProvider);
 
     return foldersAsync.when(
       data: (folders) {
-        final entries = folders.entries.toList();
+        var entries = folders.entries.toList();
+
+        // ✅ Sort pinned folders to the top
+        entries.sort((a, b) {
+          final aPinned = settings.pinnedFolders.contains(a.key);
+          final bPinned = settings.pinnedFolders.contains(b.key);
+          if (aPinned != bPinned) {
+            return aPinned ? -1 : 1;
+          }
+          return a.key.compareTo(b.key); // Alphabetical for same pin status
+        });
 
         if (entries.isEmpty) {
           return CustomScrollView(
@@ -3796,15 +3949,18 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                   ),
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final entry = entries[index];
-                    return _buildCollectionGridItem(
+                    final isPinned = settings.pinnedFolders.contains(entry.key);
+                    return _buildFolderGridItem(
                       context: context,
                       colorScheme: colorScheme,
-                      icon: Icons.folder_rounded,
-                      iconColor: colorScheme.onPrimaryContainer,
-                      iconBgColor: colorScheme.primaryContainer,
-                      title: _folderDisplayName(entry.key),
-                      count: entry.value.length,
+                      folderPath: entry.key,
+                      folderName: _folderDisplayName(entry.key),
+                      trackCount: entry.value.length,
+                      isPinned: isPinned,
                       onTap: () => _openDeviceFolder(entry.key, entry.value),
+                      onPinToggle: () => ref
+                          .read(settingsProvider.notifier)
+                          .togglePinnedFolder(entry.key),
                     );
                   }, childCount: entries.length),
                 ),
@@ -3818,16 +3974,18 @@ class _QueueTabState extends ConsumerState<QueueTab> {
             SliverList(
               delegate: SliverChildBuilderDelegate((context, index) {
                 final entry = entries[index];
-                return _buildCollectionListItem(
+                final isPinned = settings.pinnedFolders.contains(entry.key);
+                return _buildFolderListItem(
                   context: context,
                   colorScheme: colorScheme,
-                  icon: Icons.folder_rounded,
-                  iconColor: colorScheme.onPrimaryContainer,
-                  iconBgColor: colorScheme.primaryContainer,
-                  title: _folderDisplayName(entry.key),
-                  subtitle:
-                      '${entry.value.length} ${entry.value.length == 1 ? 'track' : 'tracks'}',
+                  folderPath: entry.key,
+                  folderName: _folderDisplayName(entry.key),
+                  trackCount: entry.value.length,
+                  isPinned: isPinned,
                   onTap: () => _openDeviceFolder(entry.key, entry.value),
+                  onPinToggle: () => ref
+                      .read(settingsProvider.notifier)
+                      .togglePinnedFolder(entry.key),
                 );
               }, childCount: entries.length),
             ),
@@ -4638,16 +4796,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         subtitle = context.l10n.queueEmptySinglesSubtitle;
         icon = Icons.music_note;
         break;
-      case 'folders':
-        message = context.l10n.historyFilterFolders;
-        subtitle = context.l10n.queueEmptyHistorySubtitle;
-        icon = Icons.folder_outlined;
-        break;
-      case 'playlists':
-        message = context.l10n.collectionPlaylists;
-        subtitle = context.l10n.collectionPlaylistEmptySubtitle;
-        icon = Icons.playlist_play;
-        break;
+
       default:
         message = context.l10n.queueEmptyHistory;
         subtitle = context.l10n.queueEmptyHistorySubtitle;
@@ -7222,5 +7371,3 @@ class _AnimatedLibrarySliverGridState extends State<_AnimatedLibrarySliverGrid>
     );
   }
 }
-
-
